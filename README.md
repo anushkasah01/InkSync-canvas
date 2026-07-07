@@ -8,6 +8,8 @@ Designed and developed by Anushka Sah.
 🔗https://anushkasah01.github.io/InkSync-canvas/
 
 🏛️ Project Overview
+<img width="1600" height="713" alt="image" src="https://github.com/user-attachments/assets/8a80db06-5078-420d-85c7-2ce75818cfe7" />
+
 
 InkSync Atelier transforms the traditional digital whiteboard concept into a high-end physical art studio experience, allowing creators to collaborate asynchronously or synchronously on a virtual stretched linen canvas. Built around a structured 4-Sprint Model, this web application integrates high-fidelity vector drawing, robust state management, and real-time synchronization.
 
@@ -36,39 +38,3 @@ Collaboration & Storage: Firebase Auth & Firestore (with a fail-safe offline San
 Procedural Sound: Web Audio API (Oscillator & Gain Nodes)
 
 Local State: LocalStorage API
-
-📅 Sprint Model Alignment
-
-This project satisfies and extends the structured development milestones of the 4-Sprint Model outlined in the InkSync Project (1).docx guidelines:
-
-Sprint Phase
-
-Milestone Description
-
-Implementation in InkSync Atelier
-
-Sprint 1
-
-Canvas Setup & Basic Drawing
-
-High-resolution canvas with Charcoal tool, adjustable sizing, and color picking.
-
-Sprint 2
-
-Tools & Canvas Features
-
-Precision eraser, local canvas wipe, and a 20-step local Undo/Redo buffer.
-
-Sprint 3
-
-Real-Time Collaboration
-
-Custom lobby setup, live shared chat, peer cursors, and Firebase stroke sync.
-
-Sprint 4
-
-Polish & Export Features
-
-Web Audio synthesizer SFX, Local Gallery storage, PNG exports, and a Bot Companion.
-
-Created with passion, art, and modern tech standards by Anushka Sah.
