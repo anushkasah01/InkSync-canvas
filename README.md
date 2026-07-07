@@ -6,6 +6,7 @@ Designed and developed by Anushka Sah.
 
 🟢Live Demo
 🔗https://anushkasah01.github.io/InkSync-canvas/
+
 🏛️ Project Overview
 
 InkSync Atelier transforms the traditional digital whiteboard concept into a high-end physical art studio experience, allowing creators to collaborate asynchronously or synchronously on a virtual stretched linen canvas. Built around a structured 4-Sprint Model, this web application integrates high-fidelity vector drawing, robust state management, and real-time synchronization.
