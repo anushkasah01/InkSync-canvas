@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>InkSync — Draw Together</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ===== JOIN SCREEN ===== -->
+  <div id="join-screen" class="join-screen">
+    <div class="join-card">
+      <div class="nib-mark" aria-hidden="true">
+        <svg viewBox="0 0 60 60" width="46" height="46">
+          <path d="M30 4 L52 30 L30 56 L8 30 Z" fill="none" stroke="currentColor" stroke-width="2.5"/>
+          <line x1="30" y1="30" x2="30" y2="50" stroke="currentColor" stroke-width="2.5"/>
+        </svg>
+      </div>
+      <h1>InkSync</h1>
+      <p class="tagline">One canvas. Every hand. Same ink.</p>
+
+      <label class="field-label" for="name-input">Your name</label>
+      <input id="name-input" class="text-input" type="text" placeholder="Quill, Inkwell, Doodle..." maxlength="18" />
+
+      <label class="field-label" for="room-input">Room code</label>
+      <div class="room-row">
+        <input id="room-input" class="text-input" type="text" placeholder="e.g. studio-42" maxlength="24" />
+        <button id="random-room-btn" class="ghost-btn" type="button" title="Generate a room code">🎲</button>
+      </div>
+
+      <label class="field-label">Pick your ink color</label>
+      <div id="user-color-swatches" class="swatch-row"></div>
+
+      <button id="join-btn" class="primary-btn" type="button">Dip pen &amp; enter</button>
+      <p class="hint">Share the room code with friends to draw on the same canvas, live.</p>
+    </div>
+  </div>
+
+  <!-- ===== APP ===== -->
+  <div id="app" class="app hidden">
+    <header class="topbar">
+      <div class="brand">
+        <svg viewBox="0 0 60 60" width="26" height="26" class="brand-nib">
+          <path d="M30 4 L52 30 L30 56 L8 30 Z" fill="none" stroke="currentColor" stroke-width="3"/>
+          <line x1="30" y1="30" x2="30" y2="50" stroke="currentColor" stroke-width="3"/>
+        </svg>
+        <span>InkSync</span>
+        <span class="room-chip" id="room-chip-label">room</span>
+      </div>
+
+      <div class="presence" id="presence-list" aria-label="People in this room"></div>
+
+      <button id="export-btn" class="topbar-btn" title="Export drawing as PNG">⬇ Export</button>
+    </header>
+
+    <main class="workspace">
+      <aside class="toolbar">
+        <div class="tool-group">
+          <button class="tool-btn active" data-tool="brush" title="Brush">
+            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 20 L8 20 L20 8 L16 4 L4 16 Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+          </button>
+          <button class="tool-btn" data-tool="eraser" title="Eraser">
+            <svg viewBox="0 0 24 24" width="20" height="20"><rect x="4" y="10" width="16" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="2" transform="rotate(-20 12 12)"/></svg>
+          </button>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="tool-group palette" id="palette"></div>
+
+        <div class="divider"></div>
+
+        <div class="size-control">
+          <label for="size-slider">Nib size</label>
+          <input type="range" id="size-slider" min="1" max="40" value="5" />
+          <span id="size-readout">5px</span>
+        </div>
+        <div class="size-preview-wrap">
+          <span id="size-preview" class="size-preview"></span>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="tool-group stack">
+          <button id="undo-btn" class="tool-btn wide" title="Undo your last stroke">↺ Undo</button>
+          <button id="clear-btn" class="tool-btn wide danger" title="Clear the whole canvas for everyone">✕ Clear all</button>
+        </div>
+      </aside>
+
+      <div class="canvas-wrap">
+        <canvas id="board" width="1600" height="1000"></canvas>
+        <div id="cursor-layer" class="cursor-layer"></div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
