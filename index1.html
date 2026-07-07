@@ -1,0 +1,2145 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>InkSync Atelier - Real-Time Collaborative Canvas</title>
+    <!-- Tailwind CSS for rich modern aesthetics -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        studio: {
+                            50: '#faf6f0',   /* Warm Parchment */
+                            100: '#f5eee3',  /* Cream / Sand */
+                            200: '#e6d9c5',  /* Soft Flax */
+                            800: '#2b2621',  /* Raw Umber */
+                            900: '#1a1613',  /* Burnt Umber */
+                            950: '#0e0c0a',  /* Obsidian Black */
+                        },
+                        pigment: {
+                            ochre: '#d97706',
+                            terracotta: '#c2410c',
+                            cobalt: '#1d4ed8',
+                            emerald: '#0f766e',
+                            rose: '#be185d',
+                            charcoal: '#1e293b'
+                        }
+                    },
+                    animation: {
+                        'float-slow': 'float 8s ease-in-out infinite',
+                        'float-medium': 'float 5s ease-in-out infinite',
+                        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'splatter-fade': 'splatterFade 12s ease-in-out infinite alternate',
+                    },
+                    keyframes: {
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0px) rotate(0deg)' },
+                            '50%': { transform: 'translateY(-12px) rotate(2deg)' },
+                        },
+                        splatterFade: {
+                            '0%': { opacity: 0.12, transform: 'scale(0.95) rotate(0deg)' },
+                            '100%': { opacity: 0.28, transform: 'scale(1.05) rotate(6deg)' }
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Google Fonts: Elegant Serifs and Clean Sans -->
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,900;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            overflow-x: hidden;
+        }
+        .editorial-font {
+            font-family: 'Playfair Display', serif;
+        }
+        .atelier-font {
+            font-family: 'Cormorant Garamond', serif;
+        }
+        
+        /* Interactive custom cursor utilities */
+        .cursor-brush { cursor: crosshair; }
+        .cursor-eraser { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2'%3E%3Crect x='4' y='4' width='16' height='16' rx='3'/%3E%3C/svg%3E") 12 12, auto; }
+        .cursor-text-tool { cursor: text; }
+        .cursor-shape { cursor: cell; }
+
+        .page-transition {
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* Linen texture simulated backdrop */
+        .bg-linen-light {
+            background-color: #faf6f0;
+            background-image: radial-gradient(#e6d9c5 0.5px, transparent 0.5px), radial-gradient(#e6d9c5 0.5px, #faf6f0 0.5px);
+            background-size: 8px 8px;
+            background-position: 0 0, 4px 4px;
+        }
+        .dark .bg-linen-light {
+            background-color: #0e0c0a;
+            background-image: radial-gradient(#2b2621 0.5px, transparent 0.5px), radial-gradient(#2b2621 0.5px, #0e0c0a 0.5px);
+            background-size: 8px 8px;
+            background-position: 0 0, 4px 4px;
+        }
+
+        /* Custom scrollbars */
+        ::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 99px;
+        }
+        .dark ::-webkit-scrollbar-thumb {
+            background: #334155;
+        }
+
+        /* Floating reaction drop simulation */
+        @keyframes floatUpReaction {
+            0% {
+                transform: translateY(100%) scale(0.6);
+                opacity: 0;
+            }
+            15% {
+                opacity: 0.95;
+                transform: translateY(40%) scale(1.1);
+            }
+            100% {
+                transform: translateY(-380px) scale(0.85);
+                opacity: 0;
+            }
+        }
+        .reaction-bubble {
+            animation: floatUpReaction 3.2s cubic-bezier(0.1, 0.8, 0.2, 1) forwards;
+        }
+
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        /* Organic Paint Blob Shapes */
+        .paint-blob-1 { border-radius: 60% 40% 50% 50% / 40% 40% 60% 60%; }
+        .paint-blob-2 { border-radius: 40% 60% 55% 45% / 50% 35% 65% 50%; }
+    </style>
+</head>
+<body class="bg-linen-light text-studio-900 dark:text-studio-100 transition-colors duration-300">
+
+    <script>
+        const SoundEngine = {
+            ctx: null,
+            init() {
+                if (!this.ctx) {
+                    try {
+                        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    } catch (e) {
+                        console.warn("Web Audio API not supported:", e);
+                    }
+                }
+            },
+            playClick() {
+                this.init();
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(580, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(120, this.ctx.currentTime + 0.08);
+                gain.gain.setValueAtTime(0.04, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.005, this.ctx.currentTime + 0.08);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.08);
+            },
+            playSuccess() {
+                this.init();
+                if (!this.ctx) return;
+                const notes = [261.63, 329.63, 392.00, 523.25]; // C major arpeggio
+                notes.forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime + idx * 0.08);
+                    gain.gain.setValueAtTime(0.03, this.ctx.currentTime + idx * 0.08);
+                    gain.gain.exponentialRampToValueAtTime(0.005, this.ctx.currentTime + idx * 0.08 + 0.15);
+                    osc.start(this.ctx.currentTime + idx * 0.08);
+                    osc.stop(this.ctx.currentTime + idx * 0.08 + 0.15);
+                });
+            },
+            playWhoosh() {
+                this.init();
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(90, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(450, this.ctx.currentTime + 0.2);
+                gain.gain.setValueAtTime(0.03, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.2);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.2);
+            },
+            playClear() {
+                this.init();
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(180, this.ctx.currentTime);
+                osc.frequency.linearRampToValueAtTime(60, this.ctx.currentTime + 0.3);
+                gain.gain.setValueAtTime(0.02, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.3);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.3);
+            },
+            playPop() {
+                this.init();
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(480, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(960, this.ctx.currentTime + 0.06);
+                gain.gain.setValueAtTime(0.04, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.06);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.06);
+            }
+        };
+    </script>
+
+    <!-- LANDING PAGE / ONBOARDING LOBBY -->
+    <div id="landing-page" class="page-transition min-h-screen flex flex-col justify-between relative overflow-hidden bg-gradient-to-br from-[#faf6f0] via-[#f7ebd9] to-[#ebdcc3] dark:from-[#171412] dark:via-[#110e0c] dark:to-[#090807] text-studio-900 dark:text-white">
+        
+        <!-- Artistic Splatter 1 -->
+        <svg class="absolute top-12 -left-24 w-80 h-80 text-orange-200/30 dark:text-amber-900/10 pointer-events-none animate-splatter-fade" viewBox="0 0 100 100" fill="currentColor">
+            <path d="M42,15 C49,12 55,8 63,14 C71,20 82,18 84,28 C86,38 78,44 80,54 C82,64 92,68 89,78 C86,88 74,86 64,89 C54,92 48,99 38,94 C28,89 31,78 22,76 C13,74 4,68 6,58 C8,48 18,46 20,36 C22,26 14,20 22,12 C30,4 35,18 42,15 Z" />
+            <circle cx="15" cy="20" r="4" />
+            <circle cx="85" cy="62" r="3" />
+            <circle cx="50" cy="85" r="2.5" />
+        </svg>
+        
+        <!-- Artistic Splatter 2 -->
+        <svg class="absolute bottom-20 -right-20 w-[450px] h-[450px] text-blue-200/20 dark:text-blue-950/10 pointer-events-none animate-splatter-fade" style="animation-delay: 4s;" viewBox="0 0 100 100" fill="currentColor">
+            <path d="M35,22 C44,18 50,10 60,18 C70,26 82,22 83,34 C84,46 75,52 78,64 C81,76 90,82 85,92 C80,102 68,98 58,100 C48,102 40,110 30,104 C20,98 25,86 16,83 C7,80 -2,74 0,62 C2,50 14,48 16,36 C18,24 10,18 18,10 C26,2 30,18 35,22 Z" />
+            <circle cx="20" cy="15" r="5" />
+            <circle cx="78" cy="85" r="3" />
+        </svg>
+
+        <!-- Dynamic Header -->
+        <header class="max-w-7xl mx-auto w-full px-6 py-6 flex items-center justify-between z-10">
+            <div class="flex flex-col md:flex-row md:items-center gap-1 md:gap-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-11 h-11 rounded-2xl bg-studio-900 dark:bg-studio-100 flex items-center justify-center shadow-md">
+                        <i class="ph-fill ph-palette text-studio-100 dark:text-studio-900 text-2xl"></i>
+                    </div>
+                    <span class="editorial-font text-3xl font-bold tracking-tight text-studio-900 dark:text-studio-100">InkSync <span class="atelier-font italic font-normal text-amber-700 dark:text-amber-400">Atelier</span></span>
+                </div>
+                <div class="flex items-center gap-2 border-l-0 md:border-l md:pl-4 border-stone-300 dark:border-stone-800">
+                    <span class="text-[10px] font-black tracking-widest text-amber-800 dark:text-amber-400 uppercase font-mono bg-amber-500/10 dark:bg-amber-450/10 px-2.5 py-1 rounded-md">
+                        Made by Anushka Sah
+                    </span>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <span class="hidden md:inline-flex text-[10px] items-center gap-2 bg-[#d97706]/10 border border-[#d97706]/30 text-amber-800 dark:text-amber-300 px-3 py-1.5 rounded-full font-bold uppercase tracking-wider">
+                    <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span> Active Studio Lobby
+                </span>
+                <button onclick="toggleTheme()" class="p-2.5 rounded-xl bg-white/70 dark:bg-stone-900/80 border border-stone-200 dark:border-stone-800 shadow-sm hover:scale-105 transition-transform" aria-label="Toggle Dark Mode">
+                    <i id="theme-icon" class="ph ph-moon text-xl text-stone-700 dark:text-stone-300"></i>
+                </button>
+            </div>
+        </header>
+
+        <main class="max-w-7xl mx-auto w-full px-6 py-6 md:py-12 grid grid-cols-1 lg:grid-cols-12 gap-10 items-center z-10 flex-grow">
+            <!-- Left Side controls -->
+            <div class="lg:col-span-7 flex flex-col gap-6 text-center lg:text-left">
+                <div class="inline-flex items-center gap-2 self-center lg:self-start px-3 py-1 rounded-full bg-stone-950/5 dark:bg-white/10 border border-stone-300 dark:border-stone-700">
+                    <span class="text-xs font-bold uppercase tracking-widest text-stone-600 dark:text-stone-300">🌿 Register Artist Portfolio</span>
+                </div>
+                
+                <h1 class="editorial-font text-5xl md:text-6xl font-black tracking-tight leading-tight">
+                    Where Fine Art Meets <br>
+                    <span class="bg-gradient-to-r from-amber-700 via-stone-800 to-amber-900 dark:from-amber-400 dark:via-stone-300 dark:to-amber-300 bg-clip-text text-transparent italic atelier-font font-normal">Real-Time Fluid Expression</span>
+                </h1>
+                
+                <p class="text-stone-600 dark:text-stone-300 text-sm md:text-base max-w-xl mx-auto lg:mx-0 leading-relaxed font-medium">
+                    Host collaborative drawing canvases with secure rooms, select custom physical oil paint palettes, chat synchronously with peers, and let ideas flow seamlessly onto stretched paper surfaces.
+                </p>
+
+                <!-- Artist Configuration Terminal Card -->
+                <div class="bg-white/90 dark:bg-stone-900/90 backdrop-blur-md border border-stone-200 dark:border-stone-800 p-6 rounded-[2rem] shadow-2xl max-w-xl mx-auto lg:mx-0 w-full mt-2 relative">
+                    <div class="absolute -top-3 left-8 px-4 py-1 bg-amber-700 dark:bg-amber-600 text-white rounded-full text-[10px] font-bold tracking-wider uppercase">Atelier Passport</div>
+                    
+                    <h3 class="text-sm font-bold mb-4 text-stone-800 dark:text-stone-200 flex items-center justify-between pt-2">
+                        <span class="flex items-center gap-2"><i class="ph ph-paint-brush-broad text-amber-700 dark:text-amber-500 text-lg"></i> Custom Identity Palette</span>
+                        <button onclick="generateRandomArtist()" class="text-xs text-amber-700 dark:text-amber-400 hover:underline flex items-center gap-1 font-bold transition-all">
+                            <i class="ph ph-shuffle"></i> Draft Name
+                        </button>
+                    </h3>
+                    
+                    <div class="flex flex-col gap-4">
+                        <!-- Custom Avatar Selection Grid -->
+                        <div>
+                            <label class="block text-[10px] font-bold text-stone-500 dark:text-stone-400 uppercase tracking-wider mb-2">Select Artist Avatar</label>
+                            <div class="grid grid-cols-4 sm:grid-cols-8 gap-2.5" id="avatar-grid">
+                                <!-- Populated dynamically by javascript -->
+                            </div>
+                        </div>
+
+                        <!-- Fluid Avatar Background Colors -->
+                        <div>
+                            <label class="block text-[10px] font-bold text-stone-500 dark:text-stone-400 uppercase tracking-wider mb-1.5">Select Ink Aura</label>
+                            <div class="flex flex-wrap gap-2.5 items-center justify-start p-1.5 bg-stone-50 dark:bg-stone-950/60 rounded-xl border border-stone-200/50 dark:border-stone-800/50 max-w-full" id="avatar-color-swatches">
+                                <!-- Populated dynamically by javascript -->
+                            </div>
+                        </div>
+                        
+                        <!-- Username Custom Input -->
+                        <div class="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+                            <div class="sm:col-span-8">
+                                <label class="block text-[10px] font-bold text-stone-500 dark:text-stone-400 uppercase tracking-wider mb-1.5">Artist Handle</label>
+                                <input type="text" id="username-input" placeholder="Artist Name" value="Sienna Claude" class="w-full px-4 py-3 rounded-xl bg-stone-50 dark:bg-stone-950 border border-stone-200 dark:border-stone-800 text-xs font-semibold focus:ring-1 focus:ring-amber-500 focus:outline-none transition-all dark:text-white">
+                            </div>
+                            <div class="sm:col-span-4 flex justify-center">
+                                <!-- Studio Identity Card Preview -->
+                                <div id="identity-badge-preview" class="flex items-center gap-2 px-3 py-3 rounded-xl bg-stone-50 dark:bg-stone-950 border border-stone-200 dark:border-stone-800 w-full justify-center">
+                                    <div id="preview-avatar-circle" class="w-7 h-7 rounded-full flex items-center justify-center text-sm shadow-inner">🎨</div>
+                                    <span id="preview-name" class="text-[10px] font-bold truncate">Name</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Collaborative Multi-Room Controller blocks -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-stone-100 dark:border-stone-800">
+                            <!-- Option A: Host private gallery space -->
+                            <div class="bg-stone-50/50 dark:bg-stone-950/40 p-4 rounded-2xl border border-stone-200/60 dark:border-stone-800 flex flex-col justify-between">
+                                <div>
+                                    <h4 class="text-[10px] font-bold text-stone-700 dark:text-stone-300 uppercase tracking-wide">Option A: Launch New Canvas</h4>
+                                    <p class="text-[9px] text-stone-500 mt-0.5 leading-relaxed">Hosts a secure drawing room instantly.</p>
+                                </div>
+                                <button onclick="createNewLiveRoom()" class="mt-3 bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 w-full py-2.5 rounded-xl font-bold text-[11px] hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 shadow-md">
+                                    <i class="ph ph-signature text-base"></i> Open Studio
+                                </button>
+                            </div>
+
+                            <!-- Option B: Connect to existing live codes -->
+                            <div class="bg-stone-50/50 dark:bg-stone-950/40 p-4 rounded-2xl border border-stone-200/60 dark:border-stone-800 flex flex-col justify-between">
+                                <div>
+                                    <h4 class="text-[10px] font-bold text-stone-700 dark:text-stone-300 uppercase tracking-wide">Option B: Enter Shared Atelier</h4>
+                                    <p class="text-[9px] text-stone-500 mt-0.5 leading-relaxed">Link into an ongoing session.</p>
+                                </div>
+                                <div class="flex items-center gap-1 mt-3">
+                                    <input type="text" id="join-room-id" placeholder="e.g. sienna-palette-42" class="w-full bg-stone-100 dark:bg-stone-950 border border-stone-200 dark:border-stone-850 px-2 py-2 rounded-xl text-[10px] font-bold focus:outline-none focus:ring-1 focus:ring-amber-500 text-stone-800 dark:text-amber-300 text-center uppercase tracking-wide">
+                                    <button onclick="joinRoomFromInput()" class="bg-amber-700 hover:bg-amber-600 dark:bg-amber-600 dark:hover:bg-amber-500 text-white px-2.5 py-2.5 rounded-xl text-[10px] font-extrabold active:scale-95 transition-transform">Join</button>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Side Easel Preview Screen -->
+            <div class="lg:col-span-5 relative flex justify-center items-center">
+                <div class="relative w-full max-w-[390px] aspect-square bg-[#eeddbb]/40 dark:bg-stone-900/30 rounded-[3rem] p-6 shadow-xl border border-white/20 animate-float-slow">
+                    
+                    <!-- Painter Medal -->
+                    <div class="absolute -top-4 -right-4 w-14 h-14 bg-amber-700 dark:bg-amber-600 rounded-full flex items-center justify-center shadow-lg transform rotate-12">
+                        <i class="ph-fill ph-seal-gold text-amber-100 text-2xl animate-spin" style="animation-duration: 25s"></i>
+                    </div>
+
+                    <!-- Classical Stretched Art Canvas inside a shadowbox -->
+                    <div class="w-full h-full bg-white dark:bg-stone-950 rounded-2xl p-4 shadow-2xl flex flex-col justify-between border-4 border-[#2b2621]/90 relative overflow-hidden">
+                        
+                        <!-- Art Easel Peg Head Mockup -->
+                        <div class="absolute top-0 inset-x-0 h-1 bg-[#4a3e3d] flex justify-center items-center">
+                            <span class="w-10 h-2 bg-[#705e5c] rounded-b-md shadow-md"></span>
+                        </div>
+
+                        <div class="flex items-center justify-between border-b border-stone-100 dark:border-stone-900 pb-2.5 pt-1.5">
+                            <span class="atelier-font italic font-semibold text-xs text-stone-500 dark:text-stone-400">Atelier Demonstration</span>
+                            <span class="text-[8px] font-bold text-stone-500 dark:text-stone-400 bg-stone-100 dark:bg-stone-900 px-2 py-0.5 rounded-full border border-stone-200/60 dark:border-stone-850">Live Demo</span>
+                        </div>
+                        
+                        <!-- Beautiful Classical Drawing Mockup -->
+                        <div class="flex-grow flex flex-col justify-center items-center py-2 relative overflow-hidden">
+                            <svg class="w-2/3 h-auto text-amber-900/20 dark:text-amber-50/10" viewBox="0 0 200 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <circle cx="50" cy="50" r="30" stroke="currentColor" stroke-width="2" stroke-dasharray="2 2" />
+                                <rect x="95" y="35" width="60" height="40" rx="4" stroke="currentColor" stroke-width="2" />
+                                <path d="M30 80 Q 80 20 170 70" stroke="url(#lobby-canvas-spline)" stroke-width="5" stroke-linecap="round" />
+                                <defs>
+                                    <linearGradient id="lobby-canvas-spline" x1="0" y1="0" x2="1" y2="0">
+                                        <stop offset="0%" stop-color="#b45309" />
+                                        <stop offset="100%" stop-color="#2b2621" />
+                                    </linearGradient>
+                                </defs>
+                            </svg>
+
+                            <!-- Peer Cursors Simulated -->
+                            <div class="absolute top-8 left-[30%] bg-amber-700 text-white text-[8px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-lg transform -rotate-1">
+                                <span>👩‍🎨</span> Claude
+                            </div>
+                            <div class="absolute bottom-10 right-[20%] bg-[#1d4ed8] text-white text-[8px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-lg transform rotate-2">
+                                <span>🎨</span> StudioBot
+                            </div>
+                        </div>
+
+                        <!-- Art room layout footer features -->
+                        <div class="flex justify-center gap-2 border-t border-stone-100 dark:border-stone-900 pt-2.5">
+                            <span class="w-7 h-7 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-700 text-xs"><i class="ph ph-paint-brush"></i></span>
+                            <span class="w-7 h-7 rounded-full bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-700 text-xs"><i class="ph ph-eraser"></i></span>
+                            <span class="w-7 h-7 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-700 text-xs"><i class="ph ph-shapes"></i></span>
+                            <span class="w-7 h-7 rounded-full bg-stone-500/10 border border-stone-500/20 flex items-center justify-center text-stone-700 text-xs"><i class="ph ph-paint-brush-broad"></i></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Feature highlights section -->
+        <footer class="bg-[#1a1613] text-stone-400 border-t border-stone-900/60 py-4 text-center text-[10px]">
+            <div class="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-3">
+                <span class="atelier-font italic text-stone-300 font-bold">InkSync Atelier Collaborative System — Made by Anushka Sah</span>
+                <div class="flex gap-4 items-center">
+                    <span class="hover:text-stone-300 transition-colors font-bold text-amber-500">Made by Anushka Sah</span>
+                    <span class="w-1.5 h-1.5 rounded-full bg-stone-600"></span>
+                    <span class="hover:text-stone-300 transition-colors font-semibold">In-Browser Synths</span>
+                    <span class="w-1.5 h-1.5 rounded-full bg-stone-600"></span>
+                    <span class="hover:text-stone-300 transition-colors font-semibold">Dynamic Geometry Sync</span>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- MAIN APP CANVAS WORKSPACE VIEW (Hidden initially) -->
+    <div id="app-page" class="page-transition hidden h-screen w-screen flex flex-col text-studio-900 dark:text-studio-100 bg-linen-light overflow-hidden select-none">
+        
+        <!-- App Main Layout Frame: Sidebar + Main Area + Chat panel -->
+        <div class="flex-1 flex flex-col md:flex-row min-h-0 relative">
+            
+            <!-- SIDEBAR: Workspace Tools Palette -->
+            <aside class="w-full md:w-64 bg-[#1a1613] text-stone-100 flex flex-row md:flex-col border-b md:border-b-0 md:border-r border-[#2b2621] z-20 shadow-2xl shrink-0 min-h-0">
+                <!-- App logo, room metadata & Exit button -->
+                <div class="flex md:flex-col items-center justify-between px-4 py-3 md:px-5 md:py-4 border-r md:border-r-0 md:border-b border-[#2b2621] bg-[#12100e] shrink-0 gap-3">
+                    <div class="flex items-center gap-2">
+                        <i class="ph-fill ph-palette text-amber-500 text-lg md:text-xl animate-pulse"></i>
+                        <h1 class="editorial-font text-sm md:text-lg font-bold tracking-tight">Atelier</h1>
+                    </div>
+                    <button onclick="exitToHome()" class="text-stone-400 hover:text-white p-1.5 hover:bg-stone-900 rounded-xl transition-colors" title="Exit to Home">
+                        <i class="ph ph-house text-base md:text-lg"></i>
+                    </button>
+                </div>
+
+                <!-- Tools List Scrollbar -->
+                <div class="flex-1 overflow-x-auto md:overflow-x-hidden overflow-y-hidden md:overflow-y-auto px-3 py-2 md:px-4 md:py-4 flex flex-row md:flex-col gap-3 md:gap-5 items-center md:items-stretch whitespace-nowrap min-w-0 no-scrollbar">
+                    
+                    <!-- Core Drawing Tools (Sprint 1 & 2 requirements) -->
+                    <div class="flex flex-row md:flex-col gap-1.5 shrink-0">
+                        <span class="hidden md:block text-[9px] uppercase tracking-wider text-stone-400 font-bold px-1 atelier-font italic">Drawing Instruments</span>
+                        
+                        <button id="tool-brush" onclick="setDrawingTool('brush', this)" class="tool-btn active flex items-center justify-between gap-3 p-2 md:p-2.5 rounded-xl border border-[#2b2621] bg-amber-700 text-white hover:bg-stone-900 transition-colors text-xs font-semibold">
+                            <span class="flex items-center gap-2 md:gap-3 font-medium"><i class="ph ph-paint-brush text-sm md:text-base text-amber-400"></i> Charcoal</span>
+                            <kbd class="hidden md:inline-block text-[9px] bg-stone-950 px-1.5 py-0.5 rounded text-stone-400">B</kbd>
+                        </button>
+                        
+                        <button id="tool-eraser" onclick="setDrawingTool('eraser', this)" class="tool-btn flex items-center justify-between gap-3 p-2 md:p-2.5 rounded-xl border border-[#2b2621] hover:bg-stone-900 transition-colors text-xs font-semibold text-stone-300">
+                            <span class="flex items-center gap-2 md:gap-3 font-medium"><i class="ph ph-eraser text-sm md:text-base text-stone-400"></i> Eraser</span>
+                            <kbd class="hidden md:inline-block text-[9px] bg-stone-950 px-1.5 py-0.5 rounded text-stone-400">E</kbd>
+                        </button>
+                    </div>
+
+                    <!-- Shape Vectors Palette (Sprint 4 Polish & Geometric Tools) -->
+                    <div class="flex flex-row md:flex-col gap-1.5 shrink-0 items-center md:items-stretch">
+                        <span class="hidden md:block text-[9px] uppercase tracking-wider text-stone-400 font-bold px-1 atelier-font italic">Geometric Drafting</span>
+                        <div class="flex flex-row md:grid md:grid-cols-2 gap-1.5 md:gap-2">
+                            <button id="tool-line" onclick="setDrawingTool('line', this)" class="tool-btn p-2 rounded-xl border border-[#2b2621] hover:bg-stone-900 text-[10px] md:text-[11px] font-semibold flex flex-col md:flex-row lg:flex-col items-center gap-1 text-stone-300">
+                                <i class="ph ph-line-segment text-base text-amber-600"></i> <span>Line</span>
+                            </button>
+                            <button id="tool-rect" onclick="setDrawingTool('rect', this)" class="tool-btn p-2 rounded-xl border border-[#2b2621] hover:bg-stone-900 text-[10px] md:text-[11px] font-semibold flex flex-col md:flex-row lg:flex-col items-center gap-1 text-stone-300">
+                                <i class="ph ph-square text-base text-amber-600"></i> <span>Rect</span>
+                            </button>
+                            <button id="tool-circle" onclick="setDrawingTool('circle', this)" class="tool-btn p-2 rounded-xl border border-[#2b2621] hover:bg-stone-900 text-[10px] md:text-[11px] font-semibold flex flex-col md:flex-row lg:flex-col items-center gap-1 text-stone-300">
+                                <i class="ph ph-circle text-base text-amber-600"></i> <span>Circle</span>
+                            </button>
+                            <button id="tool-text" onclick="setDrawingTool('text', this)" class="tool-btn p-2 rounded-xl border border-[#2b2621] hover:bg-stone-900 text-[10px] md:text-[11px] font-semibold flex flex-col md:flex-row lg:flex-col items-center gap-1 text-stone-300">
+                                <i class="ph ph-text-t text-base text-amber-600"></i> <span>Stamp</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Dynamic stamp text config -->
+                    <div id="text-tool-helper" class="hidden flex flex-row md:flex-col gap-1.5 bg-[#12100e] p-2 md:p-3 rounded-xl border border-[#2b2621] items-center md:items-stretch shrink-0">
+                        <span class="text-[9px] uppercase tracking-wide text-amber-500 font-bold hidden md:inline">Stamp Text</span>
+                        <input type="text" id="text-input-field" placeholder="Type text..." value="Studio Masterpiece" class="w-24 md:w-full bg-[#1e1b18] border border-[#2b2621] text-[10px] px-2 md:px-2.5 py-1 md:py-1.5 rounded-lg text-white focus:outline-none focus:ring-1 focus:ring-amber-500">
+                    </div>
+
+                    <!-- Interactive Palette Picker -->
+                    <div class="flex flex-row md:flex-col gap-2 shrink-0 items-center md:items-stretch">
+                        <span class="hidden md:block text-[9px] uppercase tracking-wider text-stone-400 font-bold px-1 atelier-font italic">Oil Paint Palette</span>
+                        <div class="flex flex-row gap-2 justify-start px-1" id="swatch-container">
+                            <!-- Populated with glossy color blobs dynamically -->
+                        </div>
+                    </div>
+
+                    <!-- Stroke Size Slider -->
+                    <div class="flex flex-row md:flex-col gap-2 shrink-0 items-center md:items-stretch min-w-[120px] md:min-w-0">
+                        <div class="flex justify-between items-center gap-1.5 px-1">
+                            <span class="hidden md:block text-[9px] uppercase tracking-wider text-stone-400 font-bold atelier-font italic">Stroke Size</span>
+                            <span class="text-xs font-bold text-amber-500" id="weight-badge">5px</span>
+                        </div>
+                        <input type="range" id="brush-weight" min="1" max="40" value="5" class="w-20 md:w-full bg-stone-900 accent-amber-500 rounded-lg cursor-pointer">
+                    </div>
+
+                </div>
+
+                <!-- Bottom User Indicator Info block (Hidden on mobile) -->
+                <div class="hidden md:block p-4 border-t border-[#2b2621] bg-[#12100e] shrink-0">
+                    <div class="flex items-center gap-2">
+                        <div id="sidebar-user-avatar" class="w-8 h-8 rounded-full flex items-center justify-center text-sm shadow-inner">🎨</div>
+                        <div class="min-w-0">
+                            <h4 id="sidebar-user-name" class="text-xs font-bold truncate">Artist</h4>
+                            <p class="text-[9px] text-stone-500 font-medium italic atelier-font">Studio Member</p>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- CANVAS WORKSPACE VIEW & CONTROLS FRAME -->
+            <div class="flex-1 flex flex-col min-h-0 relative">
+                
+                <!-- WORKSPACE HEADER ACTIONS BAR -->
+                <header class="h-16 bg-white dark:bg-stone-900 border-b border-stone-200 dark:border-stone-850 flex items-center justify-between px-4 sm:px-6 z-10 shadow-sm transition-colors duration-300">
+                    
+                    <!-- Active Status Details -->
+                    <div class="flex items-center gap-2">
+                        <div class="bg-stone-100 dark:bg-stone-800 px-3.5 py-2 rounded-xl border border-stone-200 dark:border-stone-750 flex items-center gap-1.5 cursor-pointer hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors" onclick="copyRoomCodeToClipboard()">
+                            <i class="ph ph-share-network text-amber-700 dark:text-amber-400"></i>
+                            <span class="text-[10px] sm:text-xs font-extrabold tracking-wider atelier-font" id="current-room-tag">Room: Loading</span>
+                            <i class="ph ph-copy text-[10px] text-stone-400"></i>
+                        </div>
+                        <span class="hidden md:inline-flex text-[10px] items-center gap-1 bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 px-3 py-2 rounded-xl border border-stone-200/60 dark:border-stone-750 font-bold uppercase tracking-wider">
+                            By Anushka Sah
+                        </span>
+                        <!-- Active Live Sync Badge -->
+                        <span id="sync-badge" class="inline-flex items-center gap-1 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 text-[10px] font-extrabold px-2.5 py-1 rounded-full border border-yellow-200 dark:border-yellow-900/40">
+                            <span class="w-1.5 h-1.5 rounded-full bg-yellow-500 animate-pulse"></span> Connecting
+                        </span>
+                    </div>
+
+                    <!-- Canvas Action Bar Buttons -->
+                    <div class="flex items-center gap-2">
+                        <!-- Undo & Redo tools -->
+                        <div class="flex items-center bg-stone-100 dark:bg-stone-800 rounded-xl p-0.5 border border-stone-200 dark:border-stone-750">
+                            <button id="btn-undo" onclick="localUndo()" class="p-2 text-stone-600 dark:text-stone-300 hover:text-amber-600 dark:hover:text-amber-500 hover:bg-white dark:hover:bg-stone-700 rounded-lg transition-all disabled:opacity-30 disabled:pointer-events-none" title="Undo (Ctrl+Z)">
+                                <i class="ph ph-arrow-u-up-left text-base font-bold"></i>
+                            </button>
+                            <button id="btn-redo" onclick="localRedo()" class="p-2 text-stone-600 dark:text-stone-300 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-white dark:hover:bg-stone-700 rounded-lg transition-all disabled:opacity-30 disabled:pointer-events-none" title="Redo (Ctrl+Y)">
+                                <i class="ph ph-arrow-u-up-right text-base font-bold"></i>
+                            </button>
+                        </div>
+
+                        <!-- Local Gallery and Sync Buttons -->
+                        <button onclick="toggleGallery()" class="hidden lg:flex items-center gap-1.5 p-2 bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 rounded-xl border border-stone-200 dark:border-stone-750 hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors text-xs font-bold" title="Open Art Gallery">
+                            <i class="ph ph-folder-star text-base text-amber-600"></i>
+                            <span>Portfolio</span>
+                        </button>
+
+                        <button onclick="saveToGallery()" class="flex items-center gap-1.5 bg-gradient-to-r from-amber-700 to-stone-900 text-white px-3.5 py-2.5 rounded-xl hover:brightness-105 active:scale-95 transition-all text-xs font-bold shadow-md">
+                            <i class="ph ph-floppy-disk text-base"></i>
+                            <span class="hidden sm:block">Save Art</span>
+                        </button>
+
+                        <button onclick="clearCanvasSync()" class="flex items-center gap-1 p-2 text-rose-600 hover:bg-rose-500/10 rounded-xl transition-all text-xs font-semibold" title="Clear Painting">
+                            <i class="ph ph-trash text-base"></i>
+                            <span class="hidden sm:block">Clear</span>
+                        </button>
+
+                        <button onclick="downloadCanvas()" class="flex items-center gap-1.5 bg-stone-950 dark:bg-white text-white dark:text-stone-950 px-4 py-2.5 rounded-xl hover:brightness-110 active:scale-95 transition-all text-xs font-bold shadow-md">
+                            <i class="ph ph-download-simple text-base"></i>
+                            <span class="hidden md:inline">Export PNG</span>
+                        </button>
+
+                        <!-- Expand Right Chat Toggle button -->
+                        <button id="chat-toggle-btn" onclick="toggleChatDrawer()" class="p-2.5 rounded-xl bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-750 hover:bg-stone-200 dark:hover:bg-stone-750 transition-all relative">
+                            <i class="ph ph-chats-teardrop text-lg"></i>
+                            <span id="chat-unread-badge" class="absolute -top-1.5 -right-1.5 w-4 h-4 bg-rose-500 text-white text-[8px] rounded-full flex items-center justify-center font-bold hidden animate-bounce">0</span>
+                        </button>
+                    </div>
+                </header>
+
+                <!-- CANVAS CONTENT PLACEMENT CONTAINER -->
+                <div class="flex-1 p-4 overflow-hidden flex items-center justify-center bg-linen-light relative" id="canvas-wrapper">
+                    
+                    <!-- MAIN INTERACTIVE HTML5 CANVAS BOARD -->
+                    <div class="relative p-1.5 bg-stone-950/20 rounded-2xl shadow-2xl">
+                        <canvas id="main-canvas" class="bg-white text-stone-900 rounded-xl transition-shadow duration-300 dark:bg-white max-w-full max-h-full cursor-brush border-4 border-stone-950/80" width="900" height="600"></canvas>
+                    </div>
+                    
+                    <!-- PEER FLOATING LIVE CURSORS CONTAINER OVERLAY -->
+                    <div id="peer-cursors-wrapper" class="absolute inset-0 pointer-events-none z-30 overflow-hidden">
+                        <!-- Dynamic Peer Cursors injected here with HTML overlays -->
+                    </div>
+
+                    <!-- TOAST OVERLAY LAYER -->
+                    <div id="toast-overlay" class="absolute bottom-6 left-1/2 transform -translate-x-1/2 flex flex-col gap-2 z-50 pointer-events-none"></div>
+
+                    <!-- FLOATING REACTIONS STAGE CONTAINER -->
+                    <div id="reaction-container" class="absolute bottom-0 right-10 w-40 h-96 pointer-events-none z-40 overflow-hidden">
+                        <!-- Animating Reactions injected here -->
+                    </div>
+
+                    <!-- BRIEF ROOM REPLAYING INDICATOR OVERLAY -->
+                    <div id="replay-loader" class="hidden absolute inset-0 bg-stone-950/50 backdrop-blur-sm flex flex-col justify-center items-center gap-3 z-40">
+                        <div class="w-10 h-10 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+                        <span class="text-xs text-white font-bold tracking-wide">Syncing Canvas State...</span>
+                    </div>
+
+                </div>
+
+            </div>
+
+            <!-- CHAT SCREEN OVERLAY BACKDROP FOR MOBILE -->
+            <div id="chat-backdrop" class="fixed inset-0 bg-stone-950/40 backdrop-blur-sm z-30 hidden md:hidden transition-opacity duration-300 opacity-0" onclick="toggleChatDrawer()"></div>
+
+            <!-- CHAT & ACTIVE USERS PANEL -->
+            <aside id="chat-sidebar" class="fixed md:relative inset-y-0 right-0 z-40 w-full sm:w-80 md:w-80 bg-white dark:bg-stone-900 border-l border-stone-200 dark:border-stone-850 flex flex-col h-full md:h-full shadow-2xl md:shadow-none transform translate-x-full md:translate-x-0 transition-transform duration-300 ease-in-out hidden">
+                <!-- Chat Drawer Header -->
+                <div class="px-4 py-3.5 border-b border-stone-200 dark:border-stone-850 flex items-center justify-between bg-stone-50 dark:bg-stone-900/80">
+                    <span class="text-xs font-bold text-stone-700 dark:text-stone-300 uppercase tracking-wider flex items-center gap-2">
+                        <i class="ph ph-chats text-amber-600 text-base animate-pulse"></i> Atelier Discussion
+                    </span>
+                    <button onclick="toggleChatDrawer()" class="p-1 hover:bg-stone-200 dark:hover:bg-stone-800 rounded-lg">
+                        <i class="ph ph-x text-base text-stone-500"></i>
+                    </button>
+                </div>
+
+                <!-- Collaborative Members Panel list -->
+                <div class="px-4 py-2.5 border-b border-stone-200 dark:border-stone-850 bg-amber-50/10 dark:bg-stone-950/20">
+                    <span class="text-[9px] uppercase tracking-wide text-stone-400 font-bold block mb-1">Artists Present (<span id="members-count">1</span>)</span>
+                    <div id="room-active-members" class="flex flex-wrap gap-2 py-1 max-h-24 overflow-y-auto">
+                        <!-- Injected live artist cards -->
+                    </div>
+
+                    <!-- Play with Bot Companion Panel -->
+                    <div class="mt-2.5 pt-2 border-t border-stone-200/50 dark:border-stone-800 flex items-center justify-between">
+                        <span class="text-[9px] text-stone-500 dark:text-stone-400 font-extrabold flex items-center gap-1">
+                            <i class="ph ph-robot text-amber-600 text-xs"></i> Studio Bot Companion
+                        </span>
+                        <button id="btn-bot-toggle" onclick="toggleBotCompanion()" class="px-2.5 py-1 rounded-lg bg-[#b45309]/10 hover:bg-[#b45309]/20 text-[9px] font-bold text-amber-700 dark:text-amber-400 border border-amber-600/20 transition-all flex items-center gap-1">
+                            <span class="w-1.5 h-1.5 rounded-full bg-stone-400" id="bot-status-light"></span> Play with Bot
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Chat message history scroll box -->
+                <div id="chat-messages-container" class="flex-1 overflow-y-auto p-4 flex flex-col gap-3 min-h-0 bg-stone-50/30 dark:bg-stone-950/10">
+                    <!-- Text bubble boxes -->
+                </div>
+
+                <!-- Emoji Reactions Board -->
+                <div class="px-4 py-2 border-t border-stone-200 dark:border-stone-850 bg-stone-50/50 dark:bg-stone-900 flex flex-col gap-1.5">
+                    <span class="text-[9px] uppercase tracking-wide text-stone-400 font-bold">Brush Reactions</span>
+                    <div class="flex items-center justify-between gap-1">
+                        <button onclick="sendEmojiReaction('👍')" class="flex-1 py-1 text-center text-sm rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 active:scale-110 transition-all">👍</button>
+                        <button onclick="sendEmojiReaction('🎉')" class="flex-1 py-1 text-center text-sm rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 active:scale-110 transition-all">🎉</button>
+                        <button onclick="sendEmojiReaction('🔥')" class="flex-1 py-1 text-center text-sm rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 active:scale-110 transition-all">🔥</button>
+                        <button onclick="sendEmojiReaction('😮')" class="flex-1 py-1 text-center text-sm rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 active:scale-110 transition-all">😮</button>
+                        <button onclick="sendEmojiReaction('🎨')" class="flex-1 py-1 text-center text-sm rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 active:scale-110 transition-all">🎨</button>
+                    </div>
+                </div>
+
+                <!-- Send Chat Input Box -->
+                <div class="p-3 border-t border-stone-200 dark:border-stone-850 flex gap-2 bg-stone-50 dark:bg-stone-900 shrink-0">
+                    <input type="text" id="chat-input" placeholder="Say something..." class="flex-1 bg-stone-100 dark:bg-stone-950 border border-stone-200 dark:border-stone-800 text-xs px-3 py-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-amber-500 text-stone-800 dark:text-white" onkeydown="handleChatInputKey(event)">
+                    <button onclick="sendChatMessage()" class="bg-amber-700 text-white hover:bg-amber-600 px-3.5 py-2 rounded-xl text-xs font-bold transition-all">Post</button>
+                </div>
+            </aside>
+
+        </div>
+
+        <!-- OFFLINE LOCAL SAVED ARTWORKS GALLERY PANEL -->
+        <div id="gallery-panel" class="hidden absolute bottom-0 inset-x-0 bg-white dark:bg-stone-900 border-t border-stone-200 dark:border-stone-850 p-6 z-30 transition-all transform translate-y-0 shadow-2xl">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-2">
+                    <i class="ph ph-folder-star text-amber-600 text-xl animate-bounce"></i>
+                    <h3 class="font-bold text-xs uppercase tracking-wide">Artist Portfolio <span class="text-[10px] text-stone-400 font-normal">(Saved locally inside your current browser)</span></h3>
+                </div>
+                <button onclick="toggleGallery()" class="p-1 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-lg transition-colors">
+                    <i class="ph ph-x text-lg"></i>
+                </button>
+            </div>
+
+            <!-- Empty local folder label -->
+            <div id="gallery-empty" class="py-8 flex flex-col items-center justify-center text-center">
+                <i class="ph ph-image-square text-4xl text-stone-300 dark:text-stone-700 mb-2"></i>
+                <p class="text-xs text-stone-400">Your portfolio is empty. Save some drawings to populate this drawer!</p>
+            </div>
+
+            <div id="gallery-grid" class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-4 max-h-44 overflow-y-auto">
+                <!-- Saved items render blocks dynamically -->
+            </div>
+        </div>
+
+    </div>
+
+    <!-- CORE JAVASCRIPT AND SAFELY IMPLEMENTED FIRBASE SYNC MODULE -->
+    <script>
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+            apiKey: "",
+            authDomain: "mock-domain.firebaseapp.com",
+            projectId: "mock-project",
+            storageBucket: "mock-bucket.appspot.com",
+            messagingSenderId: "12345",
+            appId: "1-123-web-app"
+        };
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : undefined;
+
+        // Core Global Application State
+        let db = null;
+        let auth = null;
+        let liveDbActive = false;
+        let authPromise = null;
+        let localUserId = crypto.randomUUID();
+        let unsubs = []; 
+        let cursorBroadcasterInterval = null;
+        let localStrokesHistory = []; 
+
+        const LOBBY_AVATARS = [
+            { icon: "🎨", name: "Monet" },
+            { icon: "🖌️", name: "Claude" },
+            { icon: "✏️", name: "Dali" },
+            { icon: "🏛️", name: "Michelangelo" },
+            { icon: "📜", name: "DaVinci" },
+            { icon: "🎭", name: "Picasso" },
+            { icon: "🏺", name: "Vase" },
+            { icon: "✒️", name: "Rembrandt" }
+        ];
+
+        const LOBBY_COLORS = [
+            { hex: "#b45309", name: "Ochre" },
+            { hex: "#c2410c", name: "Terracotta" },
+            { hex: "#1d4ed8", name: "Cobalt" },
+            { hex: "#0f766e", name: "Emerald" },
+            { hex: "#be185d", name: "Carmine" },
+            { hex: "#2b2621", name: "Umber" }
+        ];
+
+        let selectedAvatar = LOBBY_AVATARS[0];
+        let selectedColor = LOBBY_COLORS[0];
+        let currentUsername = "Sienna Claude";
+        let currentRoomId = "local-paint";
+
+        const PRESETS_ADJECTIVES = ["Sienna", "Cobalt", "Ochre", "Umber", "Ethereal", "Classical", "Prismatic", "Venetian", "Florentine", "Velvet"];
+        const PRESETS_NOUNS = ["Claude", "Monet", "Picasso", "Dali", "Rembrandt", "Michelangelo", "Raphael", "Atelier", "Pigment", "Easel"];
+
+        // --- STREAMING_CHUNK: Initializing Client Identity & Lobby Setup... ---
+        function initializeLobbyControls() {
+            // Render avatar selection list
+            const avatarContainer = document.getElementById('avatar-grid');
+            avatarContainer.innerHTML = "";
+            LOBBY_AVATARS.forEach((av, i) => {
+                const btn = document.createElement('button');
+                btn.className = `w-10 h-10 text-lg flex items-center justify-center rounded-xl bg-stone-50 dark:bg-stone-950 border border-stone-200 dark:border-stone-850 hover:border-stone-300 transition-all ${i === 0 ? 'ring-2 ring-amber-600 border-amber-600' : ''}`;
+                btn.textContent = av.icon;
+                btn.onclick = () => {
+                    SoundEngine.playClick();
+                    selectedAvatar = av;
+                    document.querySelectorAll('#avatar-grid button').forEach(b => b.className = "w-10 h-10 text-lg flex items-center justify-center rounded-xl bg-stone-50 dark:bg-stone-950 border border-stone-200 dark:border-stone-850 hover:border-stone-300 transition-all");
+                    btn.className = "w-10 h-10 text-lg flex items-center justify-center rounded-xl bg-stone-50 dark:bg-stone-950 border ring-2 ring-amber-600 border-amber-600 transition-all";
+                    updateIdentityPreview();
+                };
+                avatarContainer.appendChild(btn);
+            });
+
+            // Render Avatar aura backgrounds
+            const colorContainer = document.getElementById('avatar-color-swatches');
+            colorContainer.innerHTML = "";
+            LOBBY_COLORS.forEach((col, i) => {
+                const btn = document.createElement('button');
+                btn.className = `w-7 h-7 sm:w-8 sm:h-8 rounded-full border-2 transition-all ${i === 0 ? 'border-amber-700 dark:border-white scale-110' : 'border-transparent hover:scale-105'}`;
+                btn.style.backgroundColor = col.hex;
+                btn.onclick = () => {
+                    SoundEngine.playClick();
+                    selectedColor = col;
+                    document.querySelectorAll('#avatar-color-swatches button').forEach(b => b.className = "w-7 h-7 sm:w-8 sm:h-8 rounded-full border-2 border-transparent hover:scale-105 transition-all");
+                    btn.className = "w-7 h-7 sm:w-8 sm:h-8 rounded-full border-2 border-amber-700 dark:border-white scale-110 transition-all";
+                    updateIdentityPreview();
+                };
+                colorContainer.appendChild(btn);
+            });
+
+            // Bind username text changes
+            const nameInput = document.getElementById('username-input');
+            nameInput.addEventListener('input', (e) => {
+                currentUsername = e.target.value.trim() || "Artist";
+                updateIdentityPreview();
+            });
+
+            generateRandomArtist();
+        }
+
+        window.generateRandomArtist = function() {
+            SoundEngine.playPop();
+            const adj = PRESETS_ADJECTIVES[Math.floor(Math.random() * PRESETS_ADJECTIVES.length)];
+            const noun = PRESETS_NOUNS[Math.floor(Math.random() * PRESETS_NOUNS.length)];
+            const number = Math.floor(Math.random() * 90) + 10;
+            currentUsername = `${adj}${noun}${number}`;
+            document.getElementById('username-input').value = currentUsername;
+            updateIdentityPreview();
+        };
+
+        function updateIdentityPreview() {
+            const previewCircle = document.getElementById('preview-avatar-circle');
+            previewCircle.textContent = selectedAvatar.icon;
+            previewCircle.style.backgroundColor = selectedColor.hex;
+            document.getElementById('preview-name').textContent = currentUsername;
+        }
+
+        // --- STREAMING_CHUNK: Room Setup & Auth Triggers... ---
+        window.createNewLiveRoom = function() {
+            const adjectives = ["florentine", "venetian", "classical", "sienna", "ochre", "umber", "indigo", "cobalt"];
+            const nouns = ["atelier", "canvas", "easel", "pigment", "charcoal", "parchment", "gallery", "exhibit"];
+            const code = `${adjectives[Math.floor(Math.random() * adjectives.length)]}-${nouns[Math.floor(Math.random() * nouns.length)]}-${Math.floor(Math.random() * 90) + 10}`;
+            
+            enterRoom(code);
+        };
+
+        window.joinRoomFromInput = function() {
+            const codeInput = document.getElementById('join-room-id').value.trim();
+            if (!codeInput) {
+                showToast("Please enter an active studio room code!", "ph-warning", "error");
+                return;
+            }
+            enterRoom(codeInput.toLowerCase());
+        };
+
+        async function enterRoom(roomId) {
+            currentRoomId = roomId;
+            SoundEngine.playSuccess();
+
+            // Run authentication synchronously before binding listeners
+            await runClientAuthentication();
+
+            unsubs.forEach(un => un());
+            unsubs = [];
+
+            const landing = document.getElementById('landing-page');
+            const app = document.getElementById('app-page');
+            
+            landing.classList.add('opacity-0');
+            setTimeout(() => {
+                landing.classList.add('hidden');
+                app.classList.remove('hidden');
+                app.classList.add('opacity-100');
+
+                document.getElementById('current-room-tag').textContent = `Atelier: ${currentRoomId.toUpperCase()}`;
+                
+                const subAvatar = document.getElementById('sidebar-user-avatar');
+                if (subAvatar) {
+                    subAvatar.textContent = selectedAvatar.icon;
+                    subAvatar.style.backgroundColor = selectedColor.hex;
+                }
+                const subName = document.getElementById('sidebar-user-name');
+                if (subName) {
+                    subName.textContent = currentUsername;
+                }
+
+                const sidebar = document.getElementById('chat-sidebar');
+                sidebar.classList.remove('hidden');
+                void sidebar.offsetWidth;
+                sidebar.classList.remove('translate-x-full');
+
+                localStrokesHistory = [];
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                setupCanvasResolution();
+                setupMultiplayerSyncListeners();
+                populateGalleryItems();
+
+                sendSystemChatMessage(`🎨 ${currentUsername} entered the workspace atelier.`);
+            }, 300);
+        }
+
+        window.exitToHome = function() {
+            SoundEngine.playWhoosh();
+            
+            sendSystemChatMessage(`📢 ${currentUsername} vacated the studio session.`);
+
+            unsubs.forEach(un => un());
+            unsubs = [];
+            clearInterval(cursorBroadcasterInterval);
+
+            document.getElementById('peer-cursors-wrapper').innerHTML = "";
+
+            const landing = document.getElementById('landing-page');
+            const app = document.getElementById('app-page');
+            
+            app.classList.add('opacity-0');
+            setTimeout(() => {
+                app.classList.add('hidden');
+                landing.classList.remove('hidden');
+                landing.classList.add('opacity-100');
+            }, 300);
+        };
+
+        // --- STREAMING_CHUNK: Secure Authentication Wrapper with Dynamic Imports... ---
+        async function runClientAuthentication() {
+            if (authPromise) return authPromise;
+
+            authPromise = (async () => {
+                try {
+                    // Safe dynamic ES imports prevent CDNs from crashing compilation offline
+                    const { initializeApp } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js");
+                    const { getAuth, signInWithCustomToken, signInAnonymously } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js");
+                    const { getFirestore, doc, setDoc, getDoc, updateDoc, deleteDoc, onSnapshot, collection, query, addDoc, getDocs } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+
+                    // Store references globally inside window context
+                    window.FirestoreMethods = { doc, setDoc, getDoc, updateDoc, deleteDoc, onSnapshot, collection, query, addDoc, getDocs };
+
+                    const appInstance = initializeApp(firebaseConfig);
+                    db = getFirestore(appInstance);
+                    auth = getAuth(appInstance);
+
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(auth, initialAuthToken);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                    localUserId = auth.currentUser?.uid || crypto.randomUUID();
+                    liveDbActive = true;
+                    
+                    const syncBadge = document.getElementById('sync-badge');
+                    if (syncBadge) {
+                        syncBadge.className = "inline-flex items-center gap-1 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-[10px] font-extrabold px-2.5 py-1 rounded-full border border-emerald-200 dark:border-emerald-900/40";
+                        syncBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span> Studio Synced`;
+                    }
+                } catch (err) {
+                    console.warn("Using offline standalone mode. Firebase imports or authentication failed:", err);
+                    liveDbActive = false;
+                    
+                    const syncBadge = document.getElementById('sync-badge');
+                    if (syncBadge) {
+                        syncBadge.className = "inline-flex items-center gap-1 bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400 text-[10px] font-extrabold px-2.5 py-1 rounded-full border border-rose-200 dark:border-rose-900/40";
+                        syncBadge.innerHTML = `⚠️ Local Sandbox`;
+                    }
+                }
+            })();
+
+            return authPromise;
+        }
+
+        // --- STREAMING_CHUNK: Binding Firestore Multiplayer Events Safely (RULE 1 & 2)... ---
+        function setupMultiplayerSyncListeners() {
+            if (!liveDbActive || !window.FirestoreMethods) {
+                pushHistoryState();
+                showToast("Atelier Local Sandbox initialized!", "ph-brush");
+                return;
+            }
+
+            const loader = document.getElementById('replay-loader');
+            loader.classList.remove('hidden');
+
+            const { collection, onSnapshot, doc, setDoc, deleteDoc, addDoc, getDocs } = window.FirestoreMethods;
+
+            // Listen to strokes database path (RULE 1 Strict Paths)
+            const strokesCollection = collection(db, 'artifacts', appId, 'public', 'data', `strokes_${currentRoomId}`);
+            
+            const unsubStrokes = onSnapshot(strokesCollection, (snapshot) => {
+                const strokesData = [];
+                snapshot.forEach(doc => {
+                    strokesData.push({ id: doc.id, ...doc.data() });
+                });
+
+                // Playback and render sorted strokes (RULE 2: Sorting locally in client memory)
+                strokesData.sort((a, b) => a.createdAt - b.createdAt);
+                
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                localStrokesHistory = []; 
+                strokesData.forEach(item => {
+                    if (item.type === 'clear') {
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                        localStrokesHistory = [];
+                        return;
+                    }
+                    
+                    drawPathSegment(item);
+                    localStrokesHistory.push(item);
+                });
+
+                loader.classList.add('hidden');
+            }, (error) => {
+                console.warn("Firestore collection stroke update stream closed:", error);
+                loader.classList.add('hidden');
+            });
+            unsubs.push(unsubStrokes);
+
+            // Listen to cursors database path
+            const cursorsCollection = collection(db, 'artifacts', appId, 'public', 'data', `cursors_${currentRoomId}`);
+            const unsubCursors = onSnapshot(cursorsCollection, (snapshot) => {
+                const now = Date.now();
+                const membersList = [];
+                
+                const container = document.getElementById('peer-cursors-wrapper');
+                container.innerHTML = "";
+
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    if (doc.id !== localUserId && (now - data.updatedAt < 5000)) {
+                        const canvasRect = canvas.getBoundingClientRect();
+                        const xRender = (data.x * canvasRect.width) + canvasRect.left;
+                        const yRender = (data.y * canvasRect.height) + canvasRect.top;
+
+                        const cur = document.createElement('div');
+                        cur.className = "absolute pointer-events-none select-none z-50 flex flex-col items-start transition-all duration-100 ease-out";
+                        cur.style.left = `${xRender}px`;
+                        cur.style.top = `${yRender}px`;
+                        cur.innerHTML = `
+                            <div class="flex items-center gap-1 px-2.5 py-1 rounded-full shadow-lg text-white font-bold text-[9px] border border-white/20" style="background-color: ${data.color || '#b45309'}">
+                                <span>${data.avatar || '🎨'}</span>
+                                <span>${data.username}</span>
+                            </div>
+                            <svg class="w-5 h-5 transform -rotate-90 -mt-1 ml-1.5" style="color: ${data.color || '#b45309'}" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M7 2l12 11.2-5.8.8L21 21l-3 1.5-7.8-7.2-2.2 1.5z"/>
+                            </svg>
+                        `;
+                        container.appendChild(cur);
+                    }
+
+                    if (now - data.updatedAt < 12000) {
+                        membersList.push({ id: doc.id, ...data });
+                    }
+                });
+
+                updateRoomActiveMembers(membersList);
+            }, (err) => {
+                console.warn("Cursors collection subscription error:", err);
+            });
+            unsubs.push(unsubCursors);
+
+            // Listen to chat messages database path
+            const messagesCollection = collection(db, 'artifacts', appId, 'public', 'data', `messages_${currentRoomId}`);
+            const unsubMessages = onSnapshot(messagesCollection, (snapshot) => {
+                const chatList = [];
+                snapshot.forEach(doc => {
+                    chatList.push({ id: doc.id, ...doc.data() });
+                });
+
+                chatList.sort((a, b) => a.createdAt - b.createdAt);
+                renderChatHistory(chatList);
+                checkIncomingReactionStream(chatList);
+            }, (err) => {
+                console.warn("Live chat sync failed:", err);
+            });
+            unsubs.push(unsubMessages);
+
+            startCursorBroadcaster();
+        }
+
+        function startCursorBroadcaster() {
+            clearInterval(cursorBroadcasterInterval);
+            let lastX = 0;
+            let lastY = 0;
+
+            canvas.addEventListener('mousemove', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                lastX = (e.clientX - rect.left) / rect.width;
+                lastY = (e.clientY - rect.top) / rect.height;
+            });
+
+            canvas.addEventListener('touchmove', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const touch = e.touches[0];
+                lastX = (touch.clientX - rect.left) / rect.width;
+                lastY = (touch.clientY - rect.top) / rect.height;
+            });
+
+            cursorBroadcasterInterval = setInterval(async () => {
+                if (!liveDbActive || !auth.currentUser || !window.FirestoreMethods) return;
+                
+                try {
+                    const { doc, setDoc } = window.FirestoreMethods;
+                    const cursorDoc = doc(db, 'artifacts', appId, 'public', 'data', `cursors_${currentRoomId}`, localUserId);
+                    await setDoc(cursorDoc, {
+                        x: lastX,
+                        y: lastY,
+                        username: currentUsername,
+                        avatar: selectedAvatar.icon,
+                        color: selectedColor.hex,
+                        updatedAt: Date.now()
+                    });
+                } catch (err) {
+                    // Fail silently
+                }
+            }, 180);
+        }
+
+        // --- STREAMING_CHUNK: Rendering Studio Bot Companion Offline/Online... ---
+        let botActive = false;
+        let botInterval = null;
+        const BOT_PHRASES = [
+            "Let's add some warm ochre tones to this canvas! 🎨",
+            "This composition is reminiscent of classic Parisian salons! ✨",
+            "Fascinating lines! May I sketch a geometric flower? 🌸",
+            "True art is an expression of the soul. - Claude Monet ✒️",
+            "I am feeling inspired! Adding some strokes to our gallery. 🏛️",
+            "Art is the only way to run away without leaving home. - Twyla Tharp 🎭",
+            "How about a splash of cobalt blue? 🌊",
+            "Exquisite design! Let's build a masterpiece together.",
+            "Sending positive creative vibes to everyone in the Atelier! 🔥",
+            "Collaboration makes art truly vibrant. Made with love by Anushka Sah!"
+        ];
+
+        const BOT_DRAW_TEMPLATES = [
+            // Flower Pattern
+            (cx, cy) => {
+                const strokes = [];
+                const color = LOBBY_COLORS[Math.floor(Math.random() * LOBBY_COLORS.length)].hex;
+                strokes.push({
+                    tool: 'circle',
+                    points: [{ x: cx, y: cy }, { x: cx + 18, y: cy + 18 }],
+                    color: '#d97706',
+                    width: 4
+                });
+                for (let i = 0; i < 5; i++) {
+                    const angle = (i * 2 * Math.PI) / 5;
+                    const px = cx + Math.cos(angle) * 32;
+                    const py = cy + Math.sin(angle) * 32;
+                    strokes.push({
+                        tool: 'circle',
+                        points: [{ x: px, y: py }, { x: px + 12, y: py + 12 }],
+                        color: color,
+                        width: 3
+                    });
+                }
+                return strokes;
+            },
+            // Abstract Celestial Burst
+            (cx, cy) => {
+                const strokes = [];
+                const color = LOBBY_COLORS[Math.floor(Math.random() * LOBBY_COLORS.length)].hex;
+                for (let i = 0; i < 8; i++) {
+                    const angle = (i * 2 * Math.PI) / 8;
+                    const px = cx + Math.cos(angle) * 45;
+                    const py = cy + Math.sin(angle) * 45;
+                    strokes.push({
+                        tool: 'line',
+                        points: [{ x: cx, y: cy }, { x: px, y: py }],
+                        color: color,
+                        width: 2
+                    });
+                }
+                return strokes;
+            },
+            // Framing rectangle
+            (cx, cy) => {
+                const color = LOBBY_COLORS[Math.floor(Math.random() * LOBBY_COLORS.length)].hex;
+                return [{
+                    tool: 'rect',
+                    points: [{ x: cx - 40, y: cy - 45 }, { x: cx + 40, y: cy + 45 }],
+                    color: color,
+                    width: 3
+                }];
+            },
+            // Text Stamp
+            (cx, cy) => {
+                return [{
+                    tool: 'text',
+                    points: [{ x: cx, y: cy }],
+                    color: '#1d4ed8',
+                    width: 4,
+                    textValue: "Atelier Bot 🤖"
+                }];
+            }
+        ];
+
+        window.toggleBotCompanion = function() {
+            botActive = !botActive;
+            const light = document.getElementById('bot-status-light');
+            const btn = document.getElementById('btn-bot-toggle');
+            
+            if (botActive) {
+                SoundEngine.playSuccess();
+                light.className = "w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping";
+                btn.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-500" id="bot-status-light"></span> Dismiss Bot`;
+                showToast("Studio Bot Companion Activated! 🤖", "ph-robot", "success");
+                
+                simulateBotAction('join');
+                
+                botInterval = setInterval(() => {
+                    const rand = Math.random();
+                    if (rand < 0.35) {
+                        simulateBotAction('chat');
+                    } else if (rand < 0.70) {
+                        simulateBotAction('draw');
+                    } else {
+                        simulateBotAction('reaction');
+                    }
+                }, 10000); 
+            } else {
+                SoundEngine.playClear();
+                clearInterval(botInterval);
+                light.className = "w-1.5 h-1.5 rounded-full bg-stone-400";
+                btn.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-stone-400" id="bot-status-light"></span> Play with Bot`;
+                showToast("Bot Companion Dismissed.", "ph-robot");
+                simulateBotAction('leave');
+            }
+        };
+
+        // --- STREAMING_CHUNK: Implementing Drawing Vectors and Interactive Elements... ---
+        const canvas = document.getElementById('main-canvas');
+        const ctx = canvas.getContext('2d');
+        const canvasWrapper = document.getElementById('canvas-wrapper');
+
+        let isDrawing = false;
+        let activeTool = 'brush'; 
+        let primaryColor = '#2b2621';
+        let strokeWidth = 5;
+
+        let startX = 0;
+        let startY = 0;
+        let lastMouseX = 0;
+        let lastMouseY = 0;
+        let shapePreviewState = null;
+        let strokePointsAccumulator = [];
+
+        let localHistoryStack = [];
+        let localHistoryIndex = -1;
+        const LOCAL_HIST_MAX = 20;
+
+        function setupCanvasResolution() {
+            const wrapperWidth = canvasWrapper.clientWidth;
+            const wrapperHeight = canvasWrapper.clientHeight;
+            
+            const marginX = 24; 
+            const marginY = 24;
+            
+            canvas.width = Math.max(wrapperWidth - marginX, 360);
+            canvas.height = Math.max(wrapperHeight - marginY, 280);
+
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            redrawAllStrokes();
+        }
+
+        function redrawAllStrokes() {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            localStrokesHistory.forEach(stroke => {
+                drawPathSegment(stroke);
+            });
+        }
+
+        window.addEventListener('resize', setupCanvasResolution);
+
+        const SWATCH_PALETTE = [
+            "#2b2621", "#b45309", "#c2410c", "#1d4ed8", "#0f766e", "#be185d", "#1e293b", "#e0f2fe"
+        ];
+
+        function buildColorSwatches() {
+            const container = document.getElementById('swatch-container');
+            container.innerHTML = "";
+
+            SWATCH_PALETTE.forEach((color, i) => {
+                const btn = document.createElement('button');
+                const isBlob1 = (i % 2 === 0);
+                const blobClass = isBlob1 ? "rounded-[50%_40%_55%_45%]" : "rounded-[40%_55%_45%_50%]";
+                
+                btn.className = `w-7 h-7 ${blobClass} border border-stone-700/60 hover:scale-110 active:scale-95 transition-all relative ${i === 0 ? 'ring-2 ring-amber-500' : ''}`;
+                btn.style.backgroundColor = color;
+                
+                btn.innerHTML = `<span class="absolute top-0.5 left-1 w-2 h-1.5 bg-white/40 rounded-full blur-[0.5px]"></span>`;
+                
+                btn.onclick = () => {
+                    SoundEngine.playClick();
+                    primaryColor = color;
+                    document.querySelectorAll('#swatch-container button').forEach(b => b.classList.remove('ring-2', 'ring-amber-500'));
+                    btn.classList.add('ring-2', 'ring-amber-500');
+                };
+                container.appendChild(btn);
+            });
+
+            const pickerDiv = document.createElement('div');
+            pickerDiv.className = "relative w-7 h-7 rounded-[45%_50%_40%_55%] border border-stone-700/60 overflow-hidden bg-gradient-to-tr from-pink-500 via-emerald-500 to-amber-500 hover:scale-110 transition-transform shadow-inner";
+            pickerDiv.innerHTML = `
+                <span class="absolute top-0.5 left-1 w-2 h-1.5 bg-white/40 rounded-full blur-[0.5px] z-10"></span>
+                <input type="color" id="picker-input" value="#b45309" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full scale-150">
+            `;
+            container.appendChild(pickerDiv);
+
+            document.getElementById('picker-input').addEventListener('input', (e) => {
+                primaryColor = e.target.value;
+                document.querySelectorAll('#swatch-container button').forEach(b => b.classList.remove('ring-2', 'ring-amber-500'));
+            });
+        }
+        buildColorSwatches();
+
+        document.getElementById('brush-weight').addEventListener('input', (e) => {
+            strokeWidth = parseInt(e.target.value);
+            document.getElementById('weight-badge').textContent = `${strokeWidth}px`;
+        });
+
+        // --- STREAMING_CHUNK: Standardizing Brush and Geometric Logic Rules... ---
+        window.setDrawingTool = function(tool, element) {
+            SoundEngine.playClick();
+            activeTool = tool;
+            
+            document.querySelectorAll('.tool-btn').forEach(btn => {
+                btn.className = "tool-btn flex items-center justify-between p-2 md:p-2.5 rounded-xl border border-[#2b2621] hover:bg-stone-900 transition-colors text-xs font-semibold text-stone-300";
+            });
+            
+            const lineBtn = document.getElementById('tool-line');
+            const rectBtn = document.getElementById('tool-rect');
+            const circBtn = document.getElementById('tool-circle');
+            const textBtn = document.getElementById('tool-text');
+            
+            [lineBtn, rectBtn, circBtn, textBtn].forEach(btn => {
+                btn.className = "tool-btn p-2 rounded-xl border border-[#2b2621] hover:bg-stone-900 text-[10px] md:text-[11px] font-semibold flex flex-col md:flex-row lg:flex-col items-center gap-1 text-stone-300";
+            });
+
+            if (element.id === 'tool-brush' || element.id === 'tool-eraser') {
+                element.className = "tool-btn active flex items-center justify-between p-2 md:p-2.5 rounded-xl border border-[#2b2621] bg-amber-700 hover:bg-amber-600 text-white transition-colors text-xs font-semibold";
+            } else {
+                element.className = "tool-btn p-2 rounded-xl border border-amber-600 bg-amber-700/80 hover:bg-amber-600 text-white text-[10px] md:text-[11px] font-semibold flex flex-col md:flex-row lg:flex-col items-center gap-1";
+            }
+
+            canvas.className = "bg-white text-stone-900 rounded-xl border-4 border-stone-950/80";
+            if (tool === 'brush') {
+                canvas.classList.add('cursor-brush');
+                document.getElementById('text-tool-helper').classList.add('hidden');
+            } else if (tool === 'eraser') {
+                canvas.classList.add('cursor-eraser');
+                document.getElementById('text-tool-helper').classList.add('hidden');
+            } else if (tool === 'text') {
+                canvas.classList.add('cursor-text-tool');
+                document.getElementById('text-tool-helper').classList.remove('hidden');
+            } else {
+                canvas.classList.add('cursor-shape');
+                document.getElementById('text-tool-helper').classList.add('hidden');
+            }
+        };
+
+        function getPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            let clientX, clientY;
+            if (e.touches && e.touches.length > 0) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else if (e.changedTouches && e.changedTouches.length > 0) {
+                clientX = e.changedTouches[0].clientX;
+                clientY = e.changedTouches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+            return {
+                x: (clientX - rect.left) * (canvas.width / rect.width),
+                y: (clientY - rect.top) * (canvas.height / rect.height)
+            };
+        }
+
+        function handleStart(e) {
+            if (e.cancelable) e.preventDefault();
+            isDrawing = true;
+
+            const pos = getPos(e);
+            startX = pos.x;
+            startY = pos.y;
+            lastMouseX = pos.x;
+            lastMouseY = pos.y;
+
+            strokePointsAccumulator = [{ x: startX, y: startY }];
+            shapePreviewState = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+            if (activeTool === 'brush' || activeTool === 'eraser') {
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                ctx.strokeStyle = activeTool === 'eraser' ? '#ffffff' : primaryColor;
+                ctx.lineWidth = strokeWidth;
+                ctx.stroke();
+            } else if (activeTool === 'text') {
+                const textVal = document.getElementById('text-input-field').value.trim() || "InkSync Stamp!";
+                const stampedStroke = {
+                    tool: 'text',
+                    points: [{ x: startX, y: startY }],
+                    color: primaryColor,
+                    width: strokeWidth,
+                    textValue: textVal
+                };
+                broadcastDrawingStroke(stampedStroke);
+                isDrawing = false;
+            }
+        }
+
+        function handleDraw(e) {
+            if (!isDrawing) return;
+            if (e.cancelable) e.preventDefault();
+
+            const pos = getPos(e);
+            const currentX = pos.x;
+            const currentY = pos.y;
+            lastMouseX = currentX;
+            lastMouseY = currentY;
+
+            if (activeTool === 'brush' || activeTool === 'eraser') {
+                ctx.lineTo(currentX, currentY);
+                ctx.strokeStyle = activeTool === 'eraser' ? '#ffffff' : primaryColor;
+                ctx.lineWidth = strokeWidth;
+                ctx.stroke();
+                strokePointsAccumulator.push({ x: currentX, y: currentY });
+            } else if (activeTool === 'line') {
+                ctx.putImageData(shapePreviewState, 0, 0);
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                ctx.lineTo(currentX, currentY);
+                ctx.strokeStyle = primaryColor;
+                ctx.lineWidth = strokeWidth;
+                ctx.stroke();
+            } else if (activeTool === 'rect') {
+                ctx.putImageData(shapePreviewState, 0, 0);
+                const w = currentX - startX;
+                const h = currentY - startY;
+                ctx.strokeStyle = primaryColor;
+                ctx.lineWidth = strokeWidth;
+                ctx.strokeRect(startX, startY, w, h);
+            } else if (activeTool === 'circle') {
+                ctx.putImageData(shapePreviewState, 0, 0);
+                ctx.beginPath();
+                const radius = Math.sqrt(Math.pow(currentX - startX, 2) + Math.pow(currentY - startY, 2));
+                ctx.arc(startX, startY, radius, 0, 2 * Math.PI);
+                ctx.strokeStyle = primaryColor;
+                ctx.lineWidth = strokeWidth;
+                ctx.stroke();
+            }
+        }
+
+        // --- STREAMING_CHUNK: Packaging and Broadcating Strokes safely... ---
+        function handleStop(e) {
+            if (isDrawing) {
+                isDrawing = false;
+                ctx.closePath();
+
+                let finalStroke = null;
+
+                if (activeTool === 'brush' || activeTool === 'eraser') {
+                    // Click drawing dot fix
+                    if (strokePointsAccumulator.length === 1) {
+                        strokePointsAccumulator.push({ 
+                            x: strokePointsAccumulator[0].x + 0.1, 
+                            y: strokePointsAccumulator[0].y + 0.1 
+                        });
+                    }
+                    finalStroke = {
+                        tool: activeTool,
+                        points: strokePointsAccumulator,
+                        color: activeTool === 'eraser' ? '#ffffff' : primaryColor,
+                        width: strokeWidth
+                    };
+                } else if (activeTool === 'line') {
+                    finalStroke = {
+                        tool: 'line',
+                        points: [{ x: startX, y: startY }, { x: lastMouseX, y: lastMouseY }],
+                        color: primaryColor,
+                        width: strokeWidth
+                    };
+                } else if (activeTool === 'rect') {
+                    finalStroke = {
+                        tool: 'rect',
+                        points: [{ x: startX, y: startY }, { x: lastMouseX, y: lastMouseY }],
+                        color: primaryColor,
+                        width: strokeWidth
+                    };
+                } else if (activeTool === 'circle') {
+                    finalStroke = {
+                        tool: 'circle',
+                        points: [{ x: startX, y: startY }, { x: lastMouseX, y: lastMouseY }],
+                        color: primaryColor,
+                        width: strokeWidth
+                    };
+                }
+
+                if (finalStroke) {
+                    broadcastDrawingStroke(finalStroke);
+                }
+            }
+        }
+
+        canvas.addEventListener('mousedown', handleStart);
+        canvas.addEventListener('mousemove', handleDraw);
+        canvas.addEventListener('mouseup', handleStop);
+        canvas.addEventListener('mouseleave', handleStop);
+
+        canvas.addEventListener('touchstart', handleStart, { passive: false });
+        canvas.addEventListener('touchmove', handleDraw, { passive: false });
+        canvas.addEventListener('touchend', handleStop);
+
+        async function broadcastDrawingStroke(strokeItem) {
+            strokeItem.ownerId = localUserId;
+            strokeItem.ownerName = currentUsername;
+            strokeItem.createdAt = Date.now();
+
+            if (!liveDbActive || !window.FirestoreMethods) {
+                drawPathSegment(strokeItem);
+                localStrokesHistory.push(strokeItem);
+                pushHistoryState();
+                return;
+            }
+
+            try {
+                const { collection, addDoc } = window.FirestoreMethods;
+                const collectionRef = collection(db, 'artifacts', appId, 'public', 'data', `strokes_${currentRoomId}`);
+                await addDoc(collectionRef, strokeItem);
+            } catch (err) {
+                console.warn("Unable to broadcast drawing events:", err);
+            }
+        }
+
+        window.clearCanvasSync = async function() {
+            SoundEngine.playClear();
+            
+            if (!liveDbActive || !window.FirestoreMethods) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                localStrokesHistory = [];
+                pushHistoryState();
+                showToast("Workspace wiped clean!", "ph-trash");
+                return;
+            }
+
+            try {
+                const { collection, getDocs, deleteDoc, doc, addDoc } = window.FirestoreMethods;
+                const collectionRef = collection(db, 'artifacts', appId, 'public', 'data', `strokes_${currentRoomId}`);
+                const snapshot = await getDocs(collectionRef);
+                snapshot.forEach(async (docRef) => {
+                    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', `strokes_${currentRoomId}`, docRef.id));
+                });
+
+                await addDoc(collectionRef, {
+                    type: 'clear',
+                    createdAt: Date.now()
+                });
+                showToast("Collaborative board cleared!", "ph-trash", "success");
+
+                sendSystemChatMessage(`🧹 ${currentUsername} cleared the workspace board.`);
+            } catch (err) {
+                console.warn("Failed to reset canvas online:", err);
+            }
+        };
+
+        function drawPathSegment(stroke) {
+            if (!stroke || !stroke.points || stroke.points.length === 0) return;
+
+            ctx.strokeStyle = stroke.color;
+            ctx.lineWidth = stroke.width;
+            ctx.fillStyle = stroke.color;
+
+            const pts = stroke.points;
+
+            if (stroke.tool === 'brush' || stroke.tool === 'eraser') {
+                ctx.beginPath();
+                ctx.moveTo(pts[0].x, pts[0].y);
+                for (let i = 1; i < pts.length; i++) {
+                    ctx.lineTo(pts[i].x, pts[i].y);
+                }
+                ctx.stroke();
+            } else if (stroke.tool === 'line') {
+                ctx.beginPath();
+                ctx.moveTo(pts[0].x, pts[0].y);
+                ctx.lineTo(pts[1].x, pts[1].y);
+                ctx.stroke();
+            } else if (stroke.tool === 'rect') {
+                const w = pts[1].x - pts[0].x;
+                const h = pts[1].y - pts[0].y;
+                ctx.strokeRect(pts[0].x, pts[0].y, w, h);
+            } else if (stroke.tool === 'circle') {
+                ctx.beginPath();
+                const radius = Math.sqrt(Math.pow(pts[1].x - pts[0].x, 2) + Math.pow(pts[1].y - pts[0].y, 2));
+                ctx.arc(pts[0].x, pts[0].y, radius, 0, 2 * Math.PI);
+                ctx.stroke();
+            } else if (stroke.tool === 'text') {
+                ctx.font = `bold ${stroke.width * 2 + 14}px 'Playfair Display', serif`;
+                ctx.fillText(stroke.textValue || "", pts[0].x, pts[0].y);
+            }
+        }
+
+        // --- STREAMING_CHUNK: Local History Frames for Undo/Redo... ---
+        function pushHistoryState() {
+            if (localHistoryIndex < localHistoryStack.length - 1) {
+                localHistoryStack = localHistoryStack.slice(0, localHistoryIndex + 1);
+            }
+            if (localHistoryStack.length >= LOCAL_HIST_MAX) {
+                localHistoryStack.shift();
+            }
+            localHistoryStack.push(canvas.toDataURL());
+            localHistoryIndex = localHistoryStack.length - 1;
+            updateHistoryControlButtons();
+        }
+
+        window.localUndo = function() {
+            if (localHistoryIndex > 0) {
+                localHistoryIndex--;
+                restoreHistoryFrame();
+                SoundEngine.playWhoosh();
+            } else {
+                showToast("Nothing to undo!", "ph-info");
+            }
+        };
+
+        window.localRedo = function() {
+            if (localHistoryIndex < localHistoryStack.length - 1) {
+                localHistoryIndex++;
+                restoreHistoryFrame();
+                SoundEngine.playWhoosh();
+            } else {
+                showToast("Nothing to redo!", "ph-info");
+            }
+        };
+
+        function restoreHistoryFrame() {
+            const dataUrl = localHistoryStack[localHistoryIndex];
+            const img = new Image();
+            img.src = dataUrl;
+            img.onload = () => {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0);
+                updateHistoryControlButtons();
+            };
+        }
+
+        function updateHistoryControlButtons() {
+            document.getElementById('btn-undo').disabled = (localHistoryIndex <= 0);
+            document.getElementById('btn-redo').disabled = (localHistoryIndex >= localHistoryStack.length - 1);
+        }
+
+        // --- STREAMING_CHUNK: Multi-device Responsive Drawer Toggles... ---
+        window.toggleChatDrawer = function() {
+            SoundEngine.playClick();
+            const sidebar = document.getElementById('chat-sidebar');
+            const backdrop = document.getElementById('chat-backdrop');
+            const unread = document.getElementById('chat-unread-badge');
+            
+            if (sidebar.classList.contains('hidden')) {
+                sidebar.classList.remove('hidden');
+                backdrop.classList.remove('hidden');
+                
+                void sidebar.offsetWidth;
+                void backdrop.offsetWidth;
+                
+                sidebar.classList.remove('translate-x-full');
+                backdrop.classList.remove('opacity-0');
+                backdrop.classList.add('opacity-100');
+                
+                unread.classList.add('hidden');
+                unread.textContent = "0";
+            } else {
+                sidebar.classList.add('translate-x-full');
+                backdrop.classList.remove('opacity-100');
+                backdrop.classList.add('opacity-0');
+                
+                setTimeout(() => {
+                    if (sidebar.classList.contains('translate-x-full')) {
+                        sidebar.classList.add('hidden');
+                        backdrop.classList.add('hidden');
+                    }
+                }, 300);
+            }
+        };
+
+        async function sendSystemChatMessage(text) {
+            if (!liveDbActive || !auth.currentUser || !window.FirestoreMethods) return;
+            try {
+                const { collection, addDoc } = window.FirestoreMethods;
+                const chatCollection = collection(db, 'artifacts', appId, 'public', 'data', `messages_${currentRoomId}`);
+                await addDoc(chatCollection, {
+                    userId: 'system',
+                    username: 'System',
+                    avatar: '📢',
+                    color: '#2b2621',
+                    text: text,
+                    createdAt: Date.now()
+                });
+            } catch (err) {
+                console.warn(err);
+            }
+        }
+
+        window.sendChatMessage = async function() {
+            const input = document.getElementById('chat-input');
+            const msgVal = input.value.trim();
+            if (!msgVal) return;
+
+            input.value = "";
+            SoundEngine.playPop();
+
+            if (!liveDbActive || !auth.currentUser || !window.FirestoreMethods) {
+                renderLocalSimulationMessage(msgVal);
+                return;
+            }
+
+            try {
+                const { collection, addDoc } = window.FirestoreMethods;
+                const chatCollection = collection(db, 'artifacts', appId, 'public', 'data', `messages_${currentRoomId}`);
+                await addDoc(chatCollection, {
+                    userId: localUserId,
+                    username: currentUsername,
+                    avatar: selectedAvatar.icon,
+                    color: selectedColor.hex,
+                    text: msgVal,
+                    createdAt: Date.now()
+                });
+            } catch (err) {
+                renderLocalSimulationMessage(msgVal);
+            }
+        };
+
+        window.handleChatInputKey = function(event) {
+            if (event.key === 'Enter') {
+                sendChatMessage();
+            }
+        };
+
+        function renderChatHistory(messages) {
+            const container = document.getElementById('chat-messages-container');
+            const sidebar = document.getElementById('chat-sidebar');
+            const unread = document.getElementById('chat-unread-badge');
+            
+            const prevCount = container.children.length;
+            container.innerHTML = "";
+
+            messages.forEach(msg => {
+                const bubble = document.createElement('div');
+                
+                if (msg.userId === 'system') {
+                    bubble.className = "self-center bg-stone-100 dark:bg-stone-850 text-stone-500 dark:text-stone-400 text-[9px] px-3 py-1 rounded-full border border-stone-200 dark:border-stone-800 italic text-center my-0.5 max-w-[90%] font-medium";
+                    bubble.innerHTML = `<span>${msg.text}</span>`;
+                } else if (msg.type === 'reaction') {
+                    return;
+                } else {
+                    const isMe = msg.userId === localUserId;
+                    bubble.className = `flex flex-col max-w-[85%] rounded-2xl px-3 py-2 text-xs ${isMe ? 'self-end bg-stone-900 text-white rounded-tr-none dark:bg-stone-100 dark:text-stone-900' : 'self-start bg-stone-100 dark:bg-stone-850 text-stone-800 dark:text-stone-200 rounded-tl-none border border-stone-200 dark:border-stone-800'}`;
+                    bubble.innerHTML = `
+                        <div class="flex items-center gap-1 mb-1 opacity-75 text-[8px] font-bold">
+                            <span class="w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px]" style="background-color: ${msg.color}">${msg.avatar || '🎨'}</span>
+                            <span class="truncate max-w-[70px]">${msg.username}</span>
+                        </div>
+                        <p class="leading-relaxed break-words font-medium text-[11px]">${msg.text}</p>
+                    `;
+                }
+                container.appendChild(bubble);
+            });
+
+            if (messages.length > prevCount && sidebar.classList.contains('hidden')) {
+                SoundEngine.playPop();
+                unread.classList.remove('hidden');
+                const unreadNum = parseInt(unread.textContent || "0") + 1;
+                unread.textContent = unreadNum;
+            }
+
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function renderLocalSimulationMessage(val) {
+            const container = document.getElementById('chat-messages-container');
+            const bubble = document.createElement('div');
+            bubble.className = "flex flex-col max-w-[85%] rounded-2xl px-3 py-2 text-xs self-end bg-stone-900 text-white rounded-tr-none dark:bg-stone-100 dark:text-stone-950";
+            bubble.innerHTML = `
+                <div class="flex items-center gap-1 mb-1 opacity-75 text-[8px] font-bold">
+                    <span class="w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px]" style="background-color: ${selectedColor.hex}">${selectedAvatar.icon}</span>
+                    <span>${currentUsername}</span>
+                </div>
+                <p class="leading-relaxed break-words text-[11px] font-medium">${val}</p>
+            `;
+            container.appendChild(bubble);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // --- STREAMING_CHUNK: Dynamic Floating Reactions... ---
+        window.sendEmojiReaction = async function(emoji) {
+            SoundEngine.playPop();
+            triggerVisualReaction(emoji, currentUsername, selectedColor.hex);
+
+            if (!liveDbActive || !window.FirestoreMethods) return;
+
+            try {
+                const { collection, addDoc } = window.FirestoreMethods;
+                const chatCollection = collection(db, 'artifacts', appId, 'public', 'data', `messages_${currentRoomId}`);
+                await addDoc(chatCollection, {
+                    userId: localUserId,
+                    username: currentUsername,
+                    avatar: selectedAvatar.icon,
+                    color: selectedColor.hex,
+                    text: `*Sends Reaction: ${emoji}*`,
+                    type: 'reaction',
+                    reactionEmoji: emoji,
+                    createdAt: Date.now()
+                });
+            } catch (err) {
+                // Ignore reaction fails
+            }
+        };
+
+        function triggerVisualReaction(emoji, senderName, themeColor) {
+            const stage = document.getElementById('reaction-container');
+            
+            const item = document.createElement('div');
+            item.className = "reaction-bubble absolute bottom-0 flex items-center gap-1.5 px-2.5 py-1 rounded-full shadow-lg text-[9px] text-white font-extrabold select-none pointer-events-none border border-white/20";
+            item.style.backgroundColor = themeColor;
+            
+            const offsetLeft = Math.floor(Math.random() * 60) + 10;
+            item.style.left = `${offsetLeft}px`;
+            
+            item.innerHTML = `
+                <span class="text-sm">${emoji}</span>
+                <span class="atelier-font italic font-normal">${senderName.substring(0, 7)}</span>
+            `;
+
+            stage.appendChild(item);
+
+            setTimeout(() => {
+                item.remove();
+            }, 3200);
+        }
+
+        const processedReactionIds = new Set();
+
+        function checkIncomingReactionStream(messages) {
+            messages.forEach(msg => {
+                if (msg.type === 'reaction' && !processedReactionIds.has(msg.id)) {
+                    processedReactionIds.add(msg.id);
+                    if (msg.userId !== localUserId) {
+                        triggerVisualReaction(msg.reactionEmoji, msg.username, msg.color);
+                    }
+                }
+            });
+        }
+
+        // --- STREAMING_CHUNK: Offline Local Gallery Storage Suite... ---
+        window.saveToGallery = function() {
+            SoundEngine.playSuccess();
+            const dataUrl = canvas.toDataURL();
+            const savedItems = JSON.parse(localStorage.getItem('inksync_gallery') || '[]');
+
+            const newItem = {
+                id: new Date().getTime(),
+                title: `Masterpiece #${savedItems.length + 1}`,
+                data: dataUrl,
+                roomCode: currentRoomId
+            };
+
+            savedItems.unshift(newItem);
+            localStorage.setItem('inksync_gallery', JSON.stringify(savedItems));
+
+            showToast("Saved to offline studio portfolio!", "ph-folder-star", "success");
+            populateGalleryItems();
+        };
+
+        function populateGalleryItems() {
+            const grid = document.getElementById('gallery-grid');
+            const emptyLabel = document.getElementById('gallery-empty');
+            const savedItems = JSON.parse(localStorage.getItem('inksync_gallery') || '[]');
+
+            if (savedItems.length === 0) {
+                emptyLabel.classList.remove('hidden');
+                grid.innerHTML = "";
+                return;
+            }
+
+            emptyLabel.classList.add('hidden');
+            grid.innerHTML = "";
+
+            savedItems.forEach(item => {
+                const col = document.createElement('div');
+                col.className = "relative bg-stone-50 dark:bg-stone-950 p-1.5 rounded-xl border border-stone-200 dark:border-stone-800 group hover:ring-1 hover:ring-amber-500 transition-all";
+                col.innerHTML = `
+                    <img src="${item.data}" alt="${item.title}" class="w-full h-16 object-contain bg-white rounded-lg cursor-pointer" onclick="loadPieceFromLocalGallery(${item.id})">
+                    <div class="flex justify-between items-center mt-1 px-0.5">
+                        <span class="text-[8px] truncate text-stone-500 max-w-[50px] font-bold">${item.title}</span>
+                        <button onclick="deleteGalleryPiece(${item.id})" class="text-rose-600 hover:bg-rose-500/10 p-0.5 rounded transition-all">
+                            <i class="ph ph-trash text-[10px]"></i>
+                        </button>
+                    </div>
+                `;
+                grid.appendChild(col);
+            });
+        }
+
+        window.loadPieceFromLocalGallery = function(id) {
+            SoundEngine.playWhoosh();
+            const savedItems = JSON.parse(localStorage.getItem('inksync_gallery') || '[]');
+            const matched = savedItems.find(item => item.id === id);
+
+            if (matched) {
+                const img = new Image();
+                img.src = matched.data;
+                img.onload = () => {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(img, 0, 0);
+                    pushHistoryState();
+                    showToast("Masterpiece loaded into workspace canvas!", "ph-folder-open");
+                };
+            }
+        };
+
+        window.deleteGalleryPiece = function(id) {
+            SoundEngine.playClear();
+            let savedItems = JSON.parse(localStorage.getItem('inksync_gallery') || '[]');
+            savedItems = savedItems.filter(item => item.id !== id);
+            localStorage.setItem('inksync_gallery', JSON.stringify(savedItems));
+
+            showToast("Masterpiece cleared from local database.", "ph-trash-simple");
+            populateGalleryItems();
+        };
+
+        window.toggleGallery = function() {
+            SoundEngine.playClick();
+            const panel = document.getElementById('gallery-panel');
+            panel.classList.toggle('hidden');
+        };
+
+        window.downloadCanvas = function() {
+            SoundEngine.playSuccess();
+            const link = document.createElement('a');
+            link.download = `InkSync-Atelier-${currentRoomId}-${Date.now()}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+            showToast("Artwork successfully exported!", "ph-check-circle", "success");
+        };
+
+        window.copyRoomCodeToClipboard = function() {
+            SoundEngine.playPop();
+            const dummy = document.createElement('input');
+            document.body.appendChild(dummy);
+            dummy.value = currentRoomId;
+            dummy.select();
+            document.execCommand('copy');
+            document.body.removeChild(dummy);
+
+            showToast(`Atelier code "${currentRoomId}" copied!`, "ph-copy", "success");
+        };
+
+        window.toggleTheme = function() {
+            SoundEngine.playClick();
+            const docClass = document.documentElement.classList;
+            const icon = document.getElementById('theme-icon');
+            
+            if (docClass.contains('dark')) {
+                docClass.remove('dark');
+                icon.className = "ph ph-moon text-xl text-stone-700";
+            } else {
+                docClass.add('dark');
+                icon.className = "ph ph-sun text-xl text-yellow-400";
+            }
+        };
+
+        window.showToast = function(message, iconClass, type = 'default') {
+            const container = document.getElementById('toast-overlay');
+            const toast = document.createElement('div');
+            
+            let colorScheme = "bg-stone-900 text-white dark:bg-white dark:text-stone-950";
+            if (type === 'success') colorScheme = "bg-amber-850 text-white";
+            if (type === 'error') colorScheme = "bg-rose-800 text-white";
+
+            toast.className = `flex items-center gap-2 ${colorScheme} px-4 py-2.5 rounded-2xl shadow-2xl transform transition-all duration-300 translate-y-8 opacity-0 pointer-events-auto border border-white/10`;
+            toast.innerHTML = `
+                <i class="ph ${iconClass} text-sm"></i>
+                <span class="text-[10px] font-bold tracking-wide uppercase">${message}</span>
+            `;
+            
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.classList.remove('translate-y-8', 'opacity-0');
+            }, 10);
+
+            setTimeout(() => {
+                toast.classList.add('translate-y-8', 'opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 2600);
+        };
+
+        function updateRoomActiveMembers(members) {
+            const container = document.getElementById('room-active-members');
+            container.innerHTML = "";
+            document.getElementById('members-count').textContent = members.length || 1;
+
+            if (members.length === 0) {
+                const card = document.createElement('div');
+                card.className = "flex items-center gap-1 bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg px-2 py-0.5 text-xs select-none";
+                card.innerHTML = `
+                    <span class="w-4 h-4 rounded-full flex items-center justify-center text-[9px]" style="background-color: ${selectedColor.hex}">${selectedAvatar.icon}</span>
+                    <span class="font-bold truncate text-[9px] text-stone-700 dark:text-stone-300 max-w-[70px]">You</span>
+                `;
+                container.appendChild(card);
+                return;
+            }
+
+            members.forEach(mem => {
+                const card = document.createElement('div');
+                card.className = "flex items-center gap-1 bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg px-2 py-0.5 text-xs select-none";
+                card.innerHTML = `
+                    <span class="w-4 h-4 rounded-full flex items-center justify-center text-[9px]" style="background-color: ${mem.color}">${mem.avatar || '🎨'}</span>
+                    <span class="font-bold truncate text-[9px] text-stone-700 dark:text-stone-300 max-w-[70px]">${mem.id === localUserId ? 'You' : mem.username}</span>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        async function simulateBotAction(type) {
+            if (!botActive) return;
+
+            const botUser = {
+                uid: 'atelier-bot-companion',
+                username: "Atelier Bot 🤖",
+                avatar: "🤖",
+                color: "#10b981"
+            };
+
+            if (type === 'join') {
+                sendSystemChatMessage("🤖 Atelier Bot entered the studio session as your co-artist.");
+                injectBotChatMessage("Hello creative minds! I am your companion bot built for InkSync Atelier. I can sketch geometric patterns, share deep quotes, and react alongside your strokes. Let's create! 🎨");
+            } else if (type === 'leave') {
+                sendSystemChatMessage("🤖 Atelier Bot vacated the session.");
+            } else if (type === 'chat') {
+                const phrase = BOT_PHRASES[Math.floor(Math.random() * BOT_PHRASES.length)];
+                injectBotChatMessage(phrase);
+            } else if (type === 'reaction') {
+                const emojis = ['👍', '🎉', '🔥', '😮', '🎨'];
+                const selectedEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+                triggerVisualReaction(selectedEmoji, botUser.username, botUser.color);
+                
+                if (liveDbActive && window.FirestoreMethods) {
+                    try {
+                        const { collection, addDoc } = window.FirestoreMethods;
+                        const chatCollection = collection(db, 'artifacts', appId, 'public', 'data', `messages_${currentRoomId}`);
+                        await addDoc(chatCollection, {
+                            userId: botUser.uid,
+                            username: botUser.username,
+                            avatar: botUser.avatar,
+                            color: botUser.color,
+                            text: `*Sends Reaction: ${selectedEmoji}*`,
+                            type: 'reaction',
+                            reactionEmoji: selectedEmoji,
+                            createdAt: Date.now()
+                        });
+                    } catch (e) { console.warn(e); }
+                }
+            } else if (type === 'draw') {
+                const template = BOT_DRAW_TEMPLATES[Math.floor(Math.random() * BOT_DRAW_TEMPLATES.length)];
+                const cx = Math.random() * (canvas.width - 240) + 120;
+                const cy = Math.random() * (canvas.height - 240) + 120;
+
+                const strokes = template(cx, cy);
+                for (const stroke of strokes) {
+                    stroke.ownerId = botUser.uid;
+                    stroke.ownerName = botUser.username;
+                    stroke.createdAt = Date.now();
+
+                    if (!liveDbActive || !window.FirestoreMethods) {
+                        drawPathSegment(stroke);
+                        localStrokesHistory.push(stroke);
+                        pushHistoryState();
+                    } else {
+                        try {
+                            const { collection, addDoc } = window.FirestoreMethods;
+                            const collectionRef = collection(db, 'artifacts', appId, 'public', 'data', `strokes_${currentRoomId}`);
+                            await addDoc(collectionRef, stroke);
+                        } catch (e) { console.warn(e); }
+                    }
+                }
+                showToast("Atelier Bot added a sketch pattern!", "ph-paint-brush");
+                SoundEngine.playWhoosh();
+            }
+        }
+
+        async function injectBotChatMessage(text) {
+            const botUser = {
+                uid: 'atelier-bot-companion',
+                username: "Atelier Bot 🤖",
+                avatar: "🤖",
+                color: "#10b981"
+            };
+
+            if (!liveDbActive || !window.FirestoreMethods) {
+                const container = document.getElementById('chat-messages-container');
+                const bubble = document.createElement('div');
+                bubble.className = "flex flex-col max-w-[85%] rounded-2xl px-3 py-2 text-xs self-start bg-stone-100 dark:bg-stone-850 text-stone-800 dark:text-stone-200 rounded-tl-none border border-stone-200 dark:border-stone-800";
+                bubble.innerHTML = `
+                    <div class="flex items-center gap-1 mb-1 opacity-75 text-[8px] font-bold">
+                        <span class="w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px]" style="background-color: ${botUser.color}">${botUser.avatar}</span>
+                        <span>${botUser.username}</span>
+                    </div>
+                    <p class="leading-relaxed break-words text-[11px] font-medium">${text}</p>
+                `;
+                container.appendChild(bubble);
+                container.scrollTop = container.scrollHeight;
+                SoundEngine.playPop();
+            } else {
+                try {
+                    const { collection, addDoc } = window.FirestoreMethods;
+                    const chatCollection = collection(db, 'artifacts', appId, 'public', 'data', `messages_${currentRoomId}`);
+                    await addDoc(chatCollection, {
+                        userId: botUser.uid,
+                        username: botUser.username,
+                        avatar: botUser.avatar,
+                        color: botUser.color,
+                        text: text,
+                        createdAt: Date.now()
+                    });
+                } catch (err) { console.warn(err); }
+            }
+        }
+
+        // --- STREAMING_CHUNK: Triggering Safe Initialization on Document Load... ---
+        async function initApp() {
+            await runClientAuthentication();
+            initializeLobbyControls();
+        }
+
+        // Resolves the race condition of 'load' events inside iframe contexts completely
+        if (document.readyState === 'complete' || document.readyState === 'interactive') {
+            initApp();
+        } else {
+            window.addEventListener('load', initApp);
+        }
+    </script>
+
+</body>
+</html>
